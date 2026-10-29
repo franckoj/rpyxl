@@ -85,6 +85,25 @@ jobs:
           command: sdist
           args: --out dist
 
+      - name: Verify sdist license files
+        run: |
+          python - <<'PY'
+          from email.parser import BytesParser
+          from pathlib import Path
+          import tarfile
+
+          for path in Path("dist").glob("*.tar.gz"):
+              with tarfile.open(path) as archive:
+                  root = path.name.removesuffix(".tar.gz")
+                  metadata = BytesParser().parsebytes(archive.extractfile(f"{root}/PKG-INFO").read())
+                  declared = metadata.get_all("License-File", [])
+                  assert "LICENSE" in declared, "LICENSE is missing from package metadata"
+                  for license_file in declared:
+                      member = archive.getmember(f"{root}/{license_file}")
+                      assert member.isfile() and member.size > 0, f"Missing or empty license: {license_file}"
+              print(f"Verified license files in {path}")
+          PY
+
       - name: Upload sdist
         uses: actions/upload-artifact@v4
         with:

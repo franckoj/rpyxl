@@ -64,6 +64,7 @@ manifest-path = "crates/rpyxl-python/Cargo.toml"
 module-name = "rpyxl._core"
 python-source = "python"
 features = ["pyo3/extension-module"]
+include = [{ path = "LICENSE", format = "sdist" }]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
