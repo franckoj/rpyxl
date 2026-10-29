@@ -1,108 +1,109 @@
+
 name: CI
- 
+
 on:
-  push:
-    branches: ["main"]
-  pull_request:
-    branches: ["main"]
- 
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
 permissions:
-  contents: read
- 
+  contents: read
+
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
- 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # ----------------------------------------
-  # Rust Linting and Formatting
-  # ----------------------------------------
-  lint:
-    name: Lint & Formatting
-    runs-on: ubuntu-latest
- 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
- 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
- 
-      - name: Cache Cargo Dependencies
-        uses: Swatinem/rust-cache@v2
- 
-      - name: Check Formatting
-        run: cargo fmt --all -- --check
- 
-      - name: Run Clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
- 
-  # ----------------------------------------
-  # Rust + Python Compatibility Tests
-  # ----------------------------------------
-  test:
-    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
-    needs: [lint]
-    runs-on: ${{ matrix.os }}
- 
-    strategy:
-      fail-fast: false
-      matrix:
-        os:
-          - ubuntu-latest
-          - macos-latest
-        python-version:
-          - "3.9"
-          - "3.10"
-          - "3.11"
-          - "3.12"
- 
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
- 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
- 
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
- 
-      - name: Cache Cargo Dependencies
-        uses: Swatinem/rust-cache@v2
- 
-      - name: Display Environment Versions
-        run: |
-          python --version
-          rustc --version
-          cargo --version
- 
-      - name: Run Rust Unit Tests
-        run: cargo test --workspace --verbose
- 
-      - name: Install Build and Test Dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install "maturin>=1.5,<2.0"
-          python -m pip install "pytest>=7.4.0" "openpyxl>=3.1.2"
- 
-      - name: Build Python Wheel
-        run: |
-          python -m maturin build --release --interpreter python --out dist
- 
-      - name: Install Python Wheel
-        shell: bash
-        run: |
-          python -m pip install --force-reinstall dist/*.whl
- 
-      - name: Verify Python Package Import
-        run: |
-          python -c "import pyxl; print('PyXL imported successfully')"
-          python -c "import pyxl._core; print('Rust extension imported successfully')"
- 
-      - name: Run Python Compatibility and Unit Tests
-        run: |
-          python -m pytest tests/ -v
+  # ----------------------------------------
+  # Rust Linting and Formatting
+  # ----------------------------------------
+  lint:
+    name: Lint & Formatting
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check Formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+  # ----------------------------------------
+  # Rust + Python Compatibility Tests
+  # ----------------------------------------
+  test:
+    name: Test (${{ matrix.os }}, Python ${{ matrix.python-version }})
+    needs: [lint]
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+        python-version:
+          - "3.9"
+          - "3.10"
+          - "3.11"
+          - "3.12"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo Dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Display Environment Versions
+        run: |
+          python --version
+          rustc --version
+          cargo --version
+
+      - name: Run Rust Unit Tests
+        run: cargo test --workspace --verbose
+
+      - name: Install Build and Test Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "maturin>=1.5,<2.0"
+          python -m pip install "pytest>=7.4.0" "openpyxl>=3.1.2"
+
+      - name: Build Python Wheel
+        run: |
+          python -m maturin build --release --interpreter python --out dist
+
+      - name: Install Python Wheel
+        shell: bash
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+
+      - name: Verify Python Package Import
+        run: |
+          python -c "import pyxl; print('PyXL imported successfully')"
+          python -c "import pyxl._core; print('Rust extension imported successfully')"
+
+      - name: Run Python Compatibility and Unit Tests
+        run: |
+          python -m pytest tests/ -v
