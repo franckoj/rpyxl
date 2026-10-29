@@ -88,10 +88,10 @@ jobs:
       # Avoid linking PyO3 extension into
       # a Rust test executable on macOS.
       - name: Run Rust Core Tests
-        run: cargo test -p pyxl-core --verbose
+        run: cargo test -p rpyxl-core --verbose
 
       - name: Run Rust OOXML Tests
-        run: cargo test -p pyxl-ooxml --verbose
+        run: cargo test -p rpyxl-ooxml --verbose
 
       # ------------------------------------
       # Python Dependencies
@@ -133,8 +133,8 @@ jobs:
       # ------------------------------------
       - name: Verify Python Package
         run: |
-          python -c "import pyxl; print('PyXL imported successfully')"
-          python -c "import pyxl._core; print('Rust extension imported successfully')"
+          python -c "import rpyxl; print('RPyXL imported successfully')"
+          python -c "import rpyxl._core; print('Rust extension imported successfully')"
 
       # ------------------------------------
       # Python Unit and Compatibility Tests

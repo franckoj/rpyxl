@@ -23,7 +23,7 @@ CELL_COUNTS = [1_000, 10_000, 100_000, 500_000]
 COLORS = {
     "openpyxl": "#E53935",       # Crimson / Red
     "xlsxwriter": "#FB8C00",     # Amber / Orange
-    "pyxl": "#43A047",           # Vibrant Emerald Green
+    "rpyxl": "#43A047",           # Vibrant Emerald Green
     "rust_xlsx": "#1E88E5",      # Sapphire Blue
     "calamine": "#8E24AA",       # Deep Purple
 }
@@ -51,12 +51,12 @@ w = 0.20
 ax_w = axs[0, 0]
 ox_w_tp = [CELL_COUNTS[i] / data["write_streaming"][SCALE_KEYS[i]]["openpyxl_stream"]["median"] for i in range(4)]
 xw_w_tp = [CELL_COUNTS[i] / data["write_streaming"][SCALE_KEYS[i]]["xlsxwriter_py"]["median"] for i in range(4)]
-px_w_tp = [CELL_COUNTS[i] / data["write_streaming"][SCALE_KEYS[i]]["pyxl_stream"]["median"] for i in range(4)]
+px_w_tp = [CELL_COUNTS[i] / data["write_streaming"][SCALE_KEYS[i]]["rpyxl_stream"]["median"] for i in range(4)]
 rx_w_tp = [CELL_COUNTS[i] / data["write_streaming"][SCALE_KEYS[i]]["rust_xlsxwriter"]["median"] for i in range(4)]
 
 b1 = ax_w.bar(x - 1.5*w, [v/1000 for v in ox_w_tp], w, label="openpyxl (Python)", color=COLORS["openpyxl"], alpha=0.9)
 b2 = ax_w.bar(x - 0.5*w, [v/1000 for v in xw_w_tp], w, label="xlsxwriter (Python)", color=COLORS["xlsxwriter"], alpha=0.9)
-b3 = ax_w.bar(x + 0.5*w, [v/1000 for v in px_w_tp], w, label="PyXL (Rust+PyO3)", color=COLORS["pyxl"], alpha=0.95)
+b3 = ax_w.bar(x + 0.5*w, [v/1000 for v in px_w_tp], w, label="RPyXL (Rust+PyO3)", color=COLORS["rpyxl"], alpha=0.95)
 b4 = ax_w.bar(x + 1.5*w, [v/1000 for v in rx_w_tp], w, label="rust_xlsxwriter (Pure Rust)", color=COLORS["rust_xlsx"], alpha=0.9)
 
 ax_w.set_title("A. Streaming Write Throughput (kCells/sec)", fontsize=13, fontweight="bold", pad=10)
@@ -67,7 +67,7 @@ ax_w.legend(loc="upper left", frameon=True, facecolor="#FFFFFF", edgecolor="#DDD
 
 # Annotation on Stress
 ax_w.annotate(
-    "PyXL: 1.65M cells/s\n(6.9x vs openpyxl)",
+    "RPyXL: 1.65M cells/s\n(6.9x vs openpyxl)",
     xy=(3 + 0.5*w, px_w_tp[3]/1000),
     xytext=(2.2, 1400),
     arrowprops=dict(facecolor="#2E7D32", shrink=0.08, width=1.5, headwidth=6),
@@ -80,11 +80,11 @@ ax_w.annotate(
 ax_r = axs[0, 1]
 w_r = 0.25
 ox_r_tp = [CELL_COUNTS[i] / data["read_standard"][SCALE_KEYS[i]]["openpyxl"]["median"] for i in range(4)]
-px_r_tp = [CELL_COUNTS[i] / data["read_standard"][SCALE_KEYS[i]]["pyxl"]["median"] for i in range(4)]
+px_r_tp = [CELL_COUNTS[i] / data["read_standard"][SCALE_KEYS[i]]["rpyxl"]["median"] for i in range(4)]
 cal_r_tp = [CELL_COUNTS[i] / data["read_standard"][SCALE_KEYS[i]]["calamine"]["median"] for i in range(4)]
 
 ax_r.bar(x - w_r, [v/1000 for v in ox_r_tp], w_r, label="openpyxl (Python)", color=COLORS["openpyxl"], alpha=0.9)
-ax_r.bar(x, [v/1000 for v in px_r_tp], w_r, label="PyXL (Rust Core + DOM)", color=COLORS["pyxl"], alpha=0.95)
+ax_r.bar(x, [v/1000 for v in px_r_tp], w_r, label="RPyXL (Rust Core + DOM)", color=COLORS["rpyxl"], alpha=0.95)
 ax_r.bar(x + w_r, [v/1000 for v in cal_r_tp], w_r, label="calamine (Pure Rust Arrays)", color=COLORS["calamine"], alpha=0.9)
 
 ax_r.set_title("B. Standard Read Ingestion Throughput (kCells/sec)", fontsize=13, fontweight="bold", pad=10)
@@ -94,7 +94,7 @@ ax_r.set_xticklabels(SCALES, fontsize=10)
 ax_r.legend(loc="upper left", frameon=True, facecolor="#FFFFFF", edgecolor="#DDDDDD", fontsize=9)
 
 ax_r.annotate(
-    "PyXL: 1.67M cells/s\n(9.2x vs openpyxl)",
+    "RPyXL: 1.67M cells/s\n(9.2x vs openpyxl)",
     xy=(3, px_r_tp[3]/1000),
     xytext=(2.2, 1300),
     arrowprops=dict(facecolor="#2E7D32", shrink=0.08, width=1.5, headwidth=6),
@@ -114,12 +114,12 @@ ox_adv_times = [
     data["multisheet"]["openpyxl"]["median"],
 ]
 px_adv_times = [
-    data["mutation"]["pyxl"]["median"],
-    data["multisheet"]["pyxl"]["median"],
+    data["mutation"]["rpyxl"]["median"],
+    data["multisheet"]["rpyxl"]["median"],
 ]
 
 bar_ox = ax_adv.bar(x_adv - w_adv/2, ox_adv_times, w_adv, label="openpyxl (GIL throttled)", color=COLORS["openpyxl"], alpha=0.9)
-bar_px = ax_adv.bar(x_adv + w_adv/2, px_adv_times, w_adv, label="PyXL (Rayon Multi-Threaded)", color=COLORS["pyxl"], alpha=0.95)
+bar_px = ax_adv.bar(x_adv + w_adv/2, px_adv_times, w_adv, label="RPyXL (Rayon Multi-Threaded)", color=COLORS["rpyxl"], alpha=0.95)
 
 ax_adv.set_title("C. Advanced Production Scenarios (Execution Time in Seconds)", fontsize=13, fontweight="bold", pad=10)
 ax_adv.set_ylabel("Time (Seconds - Lower is Better)", fontsize=11)
@@ -144,13 +144,13 @@ ax_adv.set_ylim(0, 6.8)
 ax_m = axs[1, 1]
 mem_labels = [
     "openpyxl\nStandard",
-    "PyXL\nStandard DOM",
-    "PyXL\nStreaming",
+    "RPyXL\nStandard DOM",
+    "RPyXL\nStreaming",
     "calamine\nRaw Arrays",
     "rust_xlsx\nPure Rust"
 ]
 mem_values = [373.1, 225.1, 168.6, 168.6, 140.0]
-mem_colors = [COLORS["openpyxl"], COLORS["pyxl"], "#66BB6A", COLORS["calamine"], COLORS["rust_xlsx"]]
+mem_colors = [COLORS["openpyxl"], COLORS["rpyxl"], "#66BB6A", COLORS["calamine"], COLORS["rust_xlsx"]]
 
 bar_m = ax_m.bar(range(len(mem_labels)), mem_values, 0.55, color=mem_colors, alpha=0.92)
 ax_m.set_title("D. Peak Memory Consumption on 500k Cells (MB RAM)", fontsize=13, fontweight="bold", pad=10)
@@ -168,7 +168,7 @@ ax_m.annotate("148 MB RAM Saved (-40%)", xy=(1, 225.1), xytext=(1.3, 310),
              arrowprops=dict(facecolor="#2E7D32", shrink=0.08, width=1.5, headwidth=6),
              fontsize=9.5, fontweight="bold", color="#2E7D32")
 
-plt.suptitle("PyXL vs openpyxl, xlsxwriter, calamine & rust_xlsxwriter: Comprehensive Benchmark Dashboard",
+plt.suptitle("RPyXL vs openpyxl, xlsxwriter, calamine & rust_xlsxwriter: Comprehensive Benchmark Dashboard",
              fontsize=16, fontweight="bold", y=0.99)
 plt.tight_layout()
 dashboard_path = os.path.join(REPORT_DIR, "industry_executive_summary_dashboard.png")
@@ -203,7 +203,7 @@ ax2.set_yticks(y_pos)
 ax2.set_yticklabels(categories, fontsize=10.5, fontweight="medium")
 ax2.invert_yaxis()  # Top-down
 ax2.set_xlabel("Speedup Factor vs Python Baselines (Higher is Better)", fontsize=11, fontweight="bold")
-ax2.set_title("PyXL Performance Multipliers vs Established Python Libraries", fontsize=14, fontweight="bold", pad=12)
+ax2.set_title("RPyXL Performance Multipliers vs Established Python Libraries", fontsize=14, fontweight="bold", pad=12)
 
 ax2.axvline(1.0, color="#888888", linestyle="--", linewidth=1.5, label="Baseline (1.0x)")
 

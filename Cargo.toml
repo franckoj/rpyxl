@@ -1,15 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
-    "crates/pyxl-core",
-    "crates/pyxl-ooxml",
-    "crates/pyxl-python",
+    "crates/rpyxl-core",
+    "crates/rpyxl-ooxml",
+    "crates/rpyxl-python",
 ]
 
 [workspace.package]
 version = "0.1.0"
 edition = "2021"
-authors = ["PyXL Contributors"]
+authors = ["RPyXL Contributors"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/pyxl/pyxl"
 

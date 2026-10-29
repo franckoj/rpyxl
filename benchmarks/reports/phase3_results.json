@@ -15,48 +15,48 @@
       "Operation": "Workbook Creation",
       "Dataset": "100 instances",
       "openpyxl_time_s": 0.0254,
-      "pyxl_time_s": 0.0,
+      "rpyxl_time_s": 0.0,
       "speedup": 729.11,
       "openpyxl_rss_mb": 0.63,
-      "pyxl_rss_mb": 0.05,
+      "rpyxl_rss_mb": 0.05,
       "mem_reduction_pct": 92.1,
-      "pyxl_throughput": "2,874,306.6 workbooks/s",
+      "rpyxl_throughput": "2,874,306.6 workbooks/s",
       "openpyxl_throughput": "3,942.2 workbooks/s"
     },
     {
       "Operation": "Cell Access (Write)",
       "Dataset": "100x100 (10,000 cells)",
       "openpyxl_time_s": 0.0029,
-      "pyxl_time_s": 0.0045,
+      "rpyxl_time_s": 0.0045,
       "speedup": 0.65,
       "openpyxl_rss_mb": 77.93,
-      "pyxl_rss_mb": 76.57,
+      "rpyxl_rss_mb": 76.57,
       "mem_reduction_pct": 1.7,
-      "pyxl_throughput": "2,217,622.9 cells/s",
+      "rpyxl_throughput": "2,217,622.9 cells/s",
       "openpyxl_throughput": "3,395,153.4 cells/s"
     },
     {
       "Operation": "Row Appending",
       "Dataset": "5,000 rows (50,000 cells)",
       "openpyxl_time_s": 0.0523,
-      "pyxl_time_s": 0.0071,
+      "rpyxl_time_s": 0.0071,
       "speedup": 7.39,
       "openpyxl_rss_mb": 97.76,
-      "pyxl_rss_mb": 80.49,
+      "rpyxl_rss_mb": 80.49,
       "mem_reduction_pct": 17.7,
-      "pyxl_throughput": "705,882.3 rows/s",
+      "rpyxl_throughput": "705,882.3 rows/s",
       "openpyxl_throughput": "95,566.8 rows/s"
     },
     {
       "Operation": "In-Memory Row Iteration",
       "Dataset": "5,000 rows (50,000 cells)",
       "openpyxl_time_s": 0.016,
-      "pyxl_time_s": 0.0042,
+      "rpyxl_time_s": 0.0042,
       "speedup": 3.81,
       "openpyxl_rss_mb": 93.82,
-      "pyxl_rss_mb": 94.79,
+      "rpyxl_rss_mb": 94.79,
       "mem_reduction_pct": -1.0,
-      "pyxl_throughput": "11,932,698.6 cells/s",
+      "rpyxl_throughput": "11,932,698.6 cells/s",
       "openpyxl_throughput": "3,129,833.2 cells/s"
     }
   ],
@@ -64,46 +64,46 @@
     {
       "Operation": "Full XLSX Read (Standard)",
       "openpyxl": "0.5753s",
-      "pyxl": "0.0623s",
+      "rpyxl": "0.0623s",
       "speedup": "9.24x",
       "openpyxl_rss": "162.9 MB",
-      "pyxl_rss": "126.5 MB",
+      "rpyxl_rss": "126.5 MB",
       "throughput": "160,609 rows/s"
     },
     {
       "Operation": "Full XLSX Read (read_only=True)",
       "openpyxl": "0.3288s",
-      "pyxl": "0.0687s",
+      "rpyxl": "0.0687s",
       "speedup": "4.79x",
       "openpyxl_rss": "109.9 MB",
-      "pyxl_rss": "126.7 MB",
+      "rpyxl_rss": "126.7 MB",
       "throughput": "145,617 rows/s"
     },
     {
       "Operation": "Time to First Row (read_only=True)",
       "openpyxl": "2.68 ms",
-      "pyxl": "0.96 ms",
+      "rpyxl": "0.96 ms",
       "speedup": "2.78x",
       "openpyxl_rss": "117.6 MB",
-      "pyxl_rss": "124.6 MB",
+      "rpyxl_rss": "124.6 MB",
       "throughput": "Instantaneous"
     },
     {
       "Operation": "Time to First Row (Standard vs RO)",
       "openpyxl": "534.83 ms",
-      "pyxl": "0.96 ms",
+      "rpyxl": "0.96 ms",
       "speedup": "555.9x",
       "openpyxl_rss": "164.5 MB",
-      "pyxl_rss": "124.6 MB",
+      "rpyxl_rss": "124.6 MB",
       "throughput": "Instantaneous"
     },
     {
       "Operation": "Calamine Full Read Baseline",
       "openpyxl": "0.5753s (openpyxl std)",
-      "pyxl": "0.0448s (calamine)",
+      "rpyxl": "0.0448s (calamine)",
       "speedup": "12.85x",
       "openpyxl_rss": "162.9 MB",
-      "pyxl_rss": "116.6 MB",
+      "rpyxl_rss": "116.6 MB",
       "throughput": "223,270 rows/s"
     }
   ],
@@ -111,46 +111,46 @@
     {
       "Operation": "Standard Save (10,000 rows x 10 cols)",
       "openpyxl_time": "0.4137s",
-      "pyxl_time": "0.0422s",
+      "rpyxl_time": "0.0422s",
       "speedup": "9.80x",
       "openpyxl_cpu": "0.416s (106%)",
-      "pyxl_cpu": "0.042s (100%)",
+      "rpyxl_cpu": "0.042s (100%)",
       "openpyxl_rss": "137.9 MB",
-      "pyxl_rss": "147.7 MB",
-      "pyxl_throughput": "236,988 rows/s"
+      "rpyxl_rss": "147.7 MB",
+      "rpyxl_throughput": "236,988 rows/s"
     },
     {
       "Operation": "Write-Only Streaming (10,000 rows x 10 cols)",
       "openpyxl_time": "0.4449s",
-      "pyxl_time": "0.0567s",
+      "rpyxl_time": "0.0567s",
       "speedup": "7.85x",
       "openpyxl_cpu": "0.447s (126%)",
-      "pyxl_cpu": "0.057s (270%)",
+      "rpyxl_cpu": "0.057s (270%)",
       "openpyxl_rss": "137.3 MB",
-      "pyxl_rss": "137.3 MB",
-      "pyxl_throughput": "176,472 rows/s"
+      "rpyxl_rss": "137.3 MB",
+      "rpyxl_throughput": "176,472 rows/s"
     },
     {
       "Operation": "Write-Only Streaming (50,000 rows x 10 cols)",
       "openpyxl_time": "2.2154s",
-      "pyxl_time": "0.2801s",
+      "rpyxl_time": "0.2801s",
       "speedup": "7.91x",
       "openpyxl_cpu": "2.225s (123%)",
-      "pyxl_cpu": "0.280s (324%)",
+      "rpyxl_cpu": "0.280s (324%)",
       "openpyxl_rss": "137.3 MB",
-      "pyxl_rss": "137.3 MB",
-      "pyxl_throughput": "178,520 rows/s"
+      "rpyxl_rss": "137.3 MB",
+      "rpyxl_throughput": "178,520 rows/s"
     },
     {
       "Operation": "Roundtrip Write + Read (5,000 rows x 10 cols)",
       "openpyxl_time": "0.5367s",
-      "pyxl_time": "0.0595s",
+      "rpyxl_time": "0.0595s",
       "speedup": "9.02x",
       "openpyxl_cpu": "0.538s (105%)",
-      "pyxl_cpu": "0.060s (96%)",
+      "rpyxl_cpu": "0.060s (96%)",
       "openpyxl_rss": "146.2 MB",
-      "pyxl_rss": "145.2 MB",
-      "pyxl_throughput": "84,052 rows/s"
+      "rpyxl_rss": "145.2 MB",
+      "rpyxl_throughput": "84,052 rows/s"
     }
   ],
   "phase2_chart_data": [
@@ -165,12 +165,12 @@
       "rss_mb": 109.93
     },
     {
-      "name": "PyXL (Standard)",
+      "name": "RPyXL (Standard)",
       "time_s": 0.0623,
       "rss_mb": 126.46
     },
     {
-      "name": "PyXL (read_only)",
+      "name": "RPyXL (read_only)",
       "time_s": 0.0687,
       "rss_mb": 126.68
     },
@@ -189,7 +189,7 @@
       "rss_mb": 137.91
     },
     {
-      "name": "PyXL (Std Save 10k)",
+      "name": "RPyXL (Std Save 10k)",
       "time_s": 0.0422,
       "cpu_s": 0.0422,
       "cpu_pct": 100.0,
@@ -203,7 +203,7 @@
       "rss_mb": 137.32
     },
     {
-      "name": "PyXL (Write-Only 10k)",
+      "name": "RPyXL (Write-Only 10k)",
       "time_s": 0.0567,
       "cpu_s": 0.0567,
       "cpu_pct": 269.7,
@@ -217,7 +217,7 @@
       "rss_mb": 137.32
     },
     {
-      "name": "PyXL (Write-Only 50k)",
+      "name": "RPyXL (Write-Only 50k)",
       "time_s": 0.2801,
       "cpu_s": 0.2803,
       "cpu_pct": 324.2,
@@ -231,7 +231,7 @@
       "rss_mb": 146.19
     },
     {
-      "name": "PyXL (Roundtrip 5k)",
+      "name": "RPyXL (Roundtrip 5k)",
       "time_s": 0.0595,
       "cpu_s": 0.0595,
       "cpu_pct": 96.3,

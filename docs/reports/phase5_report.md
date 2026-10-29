@@ -3,13 +3,13 @@
 **Date**: 2026-10-20  
 **Phase**: 5 of 6  
 **Status**: Completed  
-**Artifact**: PyXL v0.1.0 High-Performance Engine Optimizations  
+**Artifact**: RPyXL v0.1.0 High-Performance Engine Optimizations
 
 ---
 
 ## 1. Executive Summary
 
-Phase 5 introduces targeted algorithmic and systems-level optimizations across PyXL's Rust core (`pyxl-core`) and OOXML serializer (`pyxl-ooxml`). By eliminating intermediate heap allocations, adopting fast integer and floating-point serializers (`itoa` and `ryu`), reusing row buffers, and parallelizing multi-sheet serialization with Rayon, PyXL achieves unprecedented throughput and low latency:
+Phase 5 introduces targeted algorithmic and systems-level optimizations across RPyXL's Rust core (`rpyxl-core`) and OOXML serializer (`rpyxl-ooxml`). By eliminating intermediate heap allocations, adopting fast integer and floating-point serializers (`itoa` and `ryu`), reusing row buffers, and parallelizing multi-sheet serialization with Rayon, RPyXL achieves unprecedented throughput and low latency:
 
 - **Up to 8.12× faster standard workbook save** vs `openpyxl`.
 - **Up to 7.16× faster streaming write-only** vs `openpyxl`.
@@ -61,7 +61,7 @@ Benchmarks were executed in an isolated Linux container (`aarch64`) with 8 logic
 
 ### 3.1 Comprehensive Multi-Scale Comparison Table
 
-| Dataset Scale | Operation | openpyxl (Wall) | PyXL (Wall) | Speedup Factor | openpyxl RSS | PyXL RSS | PyXL Throughput |
+| Dataset Scale | Operation | openpyxl (Wall) | RPyXL (Wall) | Speedup Factor | openpyxl RSS | RPyXL RSS | RPyXL Throughput |
 |---|---|---|---|---|---|---|---|
 | **Small (1k cells)** | Standard Save | 0.0093s | 0.0020s | **4.71×** | 75.7 MB | 75.8 MB | **505,082 cells/s** |
 | | Write-Only Save | 0.0130s | 0.0022s | **5.89×** | 75.8 MB | 75.8 MB | **452,753 cells/s** |
@@ -101,13 +101,13 @@ Benchmarks were executed in an isolated Linux container (`aarch64`) with 8 logic
 ## 5. Key Findings & Performance Analysis
 
 1. **Efficiency Increases with Dataset Scale**:
-   - While PyXL is already ~4.7× faster on small 1,000-cell sheets, its architectural advantage widens significantly to **8.12× faster** on 500,000 cells.
+   - While RPyXL is already ~4.7× faster on small 1,000-cell sheets, its architectural advantage widens significantly to **8.12× faster** on 500,000 cells.
    - Rust's cache locality and lack of Python object boxing deliver sustained throughput above 1.5 million cells/second across both reading and writing.
 2. **True Memory Efficiency on Large Reads**:
    - On the 500k stress dataset, standard openpyxl requires **373.1 MB** of RAM to construct Python cell representations.
-   - PyXL's standard load uses **225.1 MB** (a saving of **148 MB**), while PyXL streaming read-only requires only **168.6 MB**.
+   - RPyXL's standard load uses **225.1 MB** (a saving of **148 MB**), while RPyXL streaming read-only requires only **168.6 MB**.
 3. **Multi-Core Utilization**:
-   - CPU utilization measurements show PyXL achieving up to **137%–186% CPU utilization** during heavy operations, demonstrating successful multi-core parallelism via Rayon, whereas pure Python execution remains strictly throttled by the GIL.
+   - CPU utilization measurements show RPyXL achieving up to **137%–186% CPU utilization** during heavy operations, demonstrating successful multi-core parallelism via Rayon, whereas pure Python execution remains strictly throttled by the GIL.
 
 ---
 

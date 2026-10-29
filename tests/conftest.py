@@ -1,13 +1,13 @@
 """Pytest configuration and common fixtures."""
 
 import pytest
-import pyxl
+import rpyxl
 import openpyxl
 
 
 @pytest.fixture
-def pyxl_wb():
-    wb = pyxl.Workbook()
+def rpyxl_wb():
+    wb = rpyxl.Workbook()
     yield wb
     wb.close()
 

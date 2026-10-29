@@ -1,13 +1,13 @@
-# PyXL Development Progress & Changelog
+# RPyXL Development Progress & Changelog
 
 ## Phase 1: Project Foundation and Rust Core
 - **Status**: Complete
 - **Date**: 2026-10-20
 - **Summary**:
-  - Implemented pure Rust core engine (`pyxl-core`) with sparse cell storage (`BTreeMap<(row, col), Cell>`), Excel coordinate conversions (1-based), range boundary parsing, and comprehensive error types.
-  - Implemented PyO3 extension module (`pyxl-python` / `_core`) providing Python classes `Workbook`, `Worksheet`, and `Cell` with thread-safe `Arc<RwLock<...>>` reference ownership and zero-dangling pointer safety.
-  - Implemented openpyxl-compatible public package layer (`python/pyxl/`).
-  - Added skeleton crate `pyxl-ooxml` for upcoming reader and writer phases.
+  - Implemented pure Rust core engine (`rpyxl-core`) with sparse cell storage (`BTreeMap<(row, col), Cell>`), Excel coordinate conversions (1-based), range boundary parsing, and comprehensive error types.
+  - Implemented PyO3 extension module (`rpyxl-python` / `_core`) providing Python classes `Workbook`, `Worksheet`, and `Cell` with thread-safe `Arc<RwLock<...>>` reference ownership and zero-dangling pointer safety.
+  - Implemented openpyxl-compatible public package layer (`python/rpyxl/`).
+  - Added skeleton crate `rpyxl-ooxml` for upcoming reader and writer phases.
   - Created automated test suites: unit tests for Cell, Worksheet, and Workbook, integration flow test, and side-by-side openpyxl compatibility suite.
   - Built Docker-based containerized test and benchmark infrastructure (`Dockerfile`, `docker-compose.yml`).
   - Implemented and executed Phase 1 comparative benchmarks against openpyxl for all supported in-memory operations.
@@ -16,7 +16,7 @@
 - **Status**: Complete
 - **Date**: 2026-10-20
 - **Summary**:
-  - Implemented XLSX reading powered by `calamine` in `pyxl-ooxml`.
+  - Implemented XLSX reading powered by `calamine` in `rpyxl-ooxml`.
   - Added full support for standard `load_workbook()` and streaming `load_workbook(read_only=True)`.
   - Implemented lazy row generator in Rust/PyO3 for true constant $O(1)$ memory streaming.
   - Benchmark results: 9.09× faster standard load, 552× faster time-to-first-row in read-only mode, and 10.3× lower memory footprint vs openpyxl.
@@ -37,8 +37,8 @@
   - Expanded Workbook API: `wb.active` (int/str/Worksheet assignment), `wb.worksheets`, `wb.create_sheet()`, `wb.remove()`, `wb.copy_worksheet()`, `wb.index()`.
   - Expanded Worksheet API: Subscript slicing (`ws["A1"]`, `ws["A1:C5"]`, `ws["A1":"C5"]`, `ws["A"]`, `ws["A:C"]`, `ws[1]`, `ws["1:5"]`, `ws[1:5]`), `ws.cell(row, col, val)`, dict append support (`ws.append({"A": 1, "C": 2})`), `iter_cols()`, `min_row`, `min_col`, `max_row`, `max_column`, `ws.parent`.
   - Expanded Cell API: `cell.is_date`, `cell.number_format`, `cell.comment`, `cell.hyperlink`, `cell.data_type`, `cell.parent`, openpyxl type constants.
-  - Built `pyxl.utils.exceptions` hierarchy (`OpenpyxlException`, `InvalidFileException`, `SheetTitleException`, `CellCoordinatesException`, `NamedRangeException`).
-  - Added `pyxl.styles` foundation (`Font`, `PatternFill`, `Alignment`, `Border`, `Side`, `Color`).
+  - Built `rpyxl.utils.exceptions` hierarchy (`OpenpyxlException`, `InvalidFileException`, `SheetTitleException`, `CellCoordinatesException`, `NamedRangeException`).
+  - Added `rpyxl.styles` foundation (`Font`, `PatternFill`, `Alignment`, `Border`, `Side`, `Color`).
   - Published comprehensive compatibility matrix in `docs/compatibility_matrix.md`.
   - 99 total tests passing (21 Rust + 78 Python), zero Clippy warnings, zero fmt diffs.
 
@@ -83,5 +83,5 @@
   - Verified 0 compiler warnings, 0 Clippy warnings (`-D warnings`), and 0 formatting diffs (`cargo fmt --check`).
   - Authored official `CHANGELOG.md` following Keep a Changelog and SemVer specifications.
   - Published comprehensive Phase 8 Report (`docs/reports/phase8_report.md`).
-  - Created Git release tag `v0.1.0` marking the production-ready release of PyXL.
+  - Created Git release tag `v0.1.0` marking the production-ready release of RPyXL.
 

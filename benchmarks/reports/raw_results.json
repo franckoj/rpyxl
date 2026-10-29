@@ -14,7 +14,7 @@
     {
       "operation": "Workbook Creation",
       "dataset": "200 workbooks",
-      "pyxl": {
+      "rpyxl": {
         "operation": "Workbook Creation",
         "dataset": "200 workbooks",
         "total_units": 200,
@@ -68,21 +68,21 @@
         "Operation": "Workbook Creation",
         "Dataset": "200 workbooks",
         "openpyxl_time_s": 0.0512,
-        "pyxl_time_s": 0.0,
+        "rpyxl_time_s": 0.0,
         "speedup": 1675.28,
         "openpyxl_cpu_s": 0.0512,
-        "pyxl_cpu_s": 0.0,
+        "rpyxl_cpu_s": 0.0,
         "openpyxl_rss_mb": 75.04,
-        "pyxl_rss_mb": 66.37,
+        "rpyxl_rss_mb": 66.37,
         "mem_reduction_pct": 11.6,
-        "pyxl_throughput": "6,548,574.0 workbooks/s",
+        "rpyxl_throughput": "6,548,574.0 workbooks/s",
         "openpyxl_throughput": "3,908.9 workbooks/s"
       }
     },
     {
       "operation": "Cell Assignment",
       "dataset": "1000x10 (10,000 cells)",
-      "pyxl": {
+      "rpyxl": {
         "operation": "Cell Assignment",
         "dataset": "1000x10 (10,000 cells)",
         "total_units": 10000,
@@ -136,21 +136,21 @@
         "Operation": "Cell Assignment",
         "Dataset": "1000x10 (10,000 cells)",
         "openpyxl_time_s": 0.0083,
-        "pyxl_time_s": 0.0033,
+        "rpyxl_time_s": 0.0033,
         "speedup": 2.54,
         "openpyxl_cpu_s": 0.0083,
-        "pyxl_cpu_s": 0.0032,
+        "rpyxl_cpu_s": 0.0032,
         "openpyxl_rss_mb": 78.66,
-        "pyxl_rss_mb": 75.05,
+        "rpyxl_rss_mb": 75.05,
         "mem_reduction_pct": 4.6,
-        "pyxl_throughput": "3,073,337.2 cells/s",
+        "rpyxl_throughput": "3,073,337.2 cells/s",
         "openpyxl_throughput": "1,208,812.3 cells/s"
       }
     },
     {
       "operation": "Random Cell Access",
       "dataset": "10,000 lookups",
-      "pyxl": {
+      "rpyxl": {
         "operation": "Random Cell Access",
         "dataset": "10,000 lookups",
         "total_units": 10000,
@@ -204,21 +204,21 @@
         "Operation": "Random Cell Access",
         "Dataset": "10,000 lookups",
         "openpyxl_time_s": 0.0025,
-        "pyxl_time_s": 0.0037,
+        "rpyxl_time_s": 0.0037,
         "speedup": 0.66,
         "openpyxl_cpu_s": 0.0025,
-        "pyxl_cpu_s": 0.0037,
+        "rpyxl_cpu_s": 0.0037,
         "openpyxl_rss_mb": 79.66,
-        "pyxl_rss_mb": 79.32,
+        "rpyxl_rss_mb": 79.32,
         "mem_reduction_pct": 0.4,
-        "pyxl_throughput": "2,708,559.0 reads/s",
+        "rpyxl_throughput": "2,708,559.0 reads/s",
         "openpyxl_throughput": "4,074,357.0 reads/s"
       }
     },
     {
       "operation": "Row Appending",
       "dataset": "5,000 rows (50,000 cells)",
-      "pyxl": {
+      "rpyxl": {
         "operation": "Row Appending",
         "dataset": "5,000 rows (50,000 cells)",
         "total_units": 5000,
@@ -272,21 +272,21 @@
         "Operation": "Row Appending",
         "Dataset": "5,000 rows (50,000 cells)",
         "openpyxl_time_s": 0.0637,
-        "pyxl_time_s": 0.0083,
+        "rpyxl_time_s": 0.0083,
         "speedup": 7.68,
         "openpyxl_cpu_s": 0.0637,
-        "pyxl_cpu_s": 0.0083,
+        "rpyxl_cpu_s": 0.0083,
         "openpyxl_rss_mb": 97.27,
-        "pyxl_rss_mb": 82.93,
+        "rpyxl_rss_mb": 82.93,
         "mem_reduction_pct": 14.7,
-        "pyxl_throughput": "602,848.5 rows/s",
+        "rpyxl_throughput": "602,848.5 rows/s",
         "openpyxl_throughput": "78,489.9 rows/s"
       }
     },
     {
       "operation": "Row Iteration (values_only)",
       "dataset": "5,000 rows (50,000 cells)",
-      "pyxl": {
+      "rpyxl": {
         "operation": "Row Iteration (values_only)",
         "dataset": "5,000 rows (50,000 cells)",
         "total_units": 50000,
@@ -340,14 +340,14 @@
         "Operation": "Row Iteration (values_only)",
         "Dataset": "5,000 rows (50,000 cells)",
         "openpyxl_time_s": 0.0158,
-        "pyxl_time_s": 0.0038,
+        "rpyxl_time_s": 0.0038,
         "speedup": 4.18,
         "openpyxl_cpu_s": 0.0158,
-        "pyxl_cpu_s": 0.0038,
+        "rpyxl_cpu_s": 0.0038,
         "openpyxl_rss_mb": 90.36,
-        "pyxl_rss_mb": 87.98,
+        "rpyxl_rss_mb": 87.98,
         "mem_reduction_pct": 2.6,
-        "pyxl_throughput": "13,258,643.0 cells/s",
+        "rpyxl_throughput": "13,258,643.0 cells/s",
         "openpyxl_throughput": "3,171,180.3 cells/s"
       }
     }

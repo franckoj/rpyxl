@@ -1,6 +1,6 @@
-# Migrating from openpyxl to PyXL
+# Migrating from openpyxl to RPyXL
 
-PyXL is designed as a high-performance, drop-in replacement for `openpyxl`. For standard workflows, migrating requires only changing your import statement.
+RPyXL is designed as a high-performance, drop-in replacement for `openpyxl`. For standard workflows, migrating requires only changing your import statement.
 
 ---
 
@@ -13,10 +13,10 @@ If your codebase relies heavily on `openpyxl`, you can switch immediately using 
 import openpyxl
 
 # After
-import pyxl as openpyxl
+import rpyxl as openpyxl
 ```
 
-All standard calls such as `openpyxl.load_workbook("data.xlsx")`, `openpyxl.Workbook()`, and `openpyxl.utils.get_column_letter` work identically while executing on PyXL's Rust core.
+All standard calls such as `openpyxl.load_workbook("data.xlsx")`, `openpyxl.Workbook()`, and `openpyxl.utils.get_column_letter` work identically while executing on RPyXL's Rust core.
 
 ---
 
@@ -27,9 +27,9 @@ All standard calls such as `openpyxl.load_workbook("data.xlsx")`, `openpyxl.Work
 Both libraries share identical APIs for workbook creation, cell assignment, row appending, and saving:
 
 ```python
-import pyxl
+import rpyxl
 
-wb = pyxl.Workbook()
+wb = rpyxl.Workbook()
 ws = wb.active
 ws.title = "Q3_Report"
 
@@ -53,10 +53,10 @@ wb.save("report.xlsx")
 For datasets with 50,000+ rows, streaming write-only mode streams data to disk with constant $O(1)$ memory:
 
 ```python
-import pyxl
+import rpyxl
 from datetime import datetime
 
-wb = pyxl.Workbook(write_only=True)
+wb = rpyxl.Workbook(write_only=True)
 ws = wb.create_sheet("LargeStream")
 
 # Header
@@ -68,23 +68,23 @@ for i in range(1, 100_001):
 wb.save("large_export.xlsx")
 ```
 
-*Performance note: PyXL writes 100k rows in ~0.065s (~1.5M cells/s) compared to ~0.42s in openpyxl.*
+*Performance note: RPyXL writes 100k rows in ~0.065s (~1.5M cells/s) compared to ~0.42s in openpyxl.*
 
 ### 2.3 Streaming Reader (`read_only=True`)
 
 Streaming read mode parses XLSX files with zero accumulation of Python objects:
 
 ```python
-import pyxl
+import rpyxl
 
-with pyxl.load_workbook("large_export.xlsx", read_only=True) as wb:
+with rpyxl.load_workbook("large_export.xlsx", read_only=True) as wb:
     ws = wb.active
     for row in ws.iter_rows(values_only=True):
         id_val, ts, val, status = row
         # Process each row
 ```
 
-*Performance note: PyXL reads 100k rows in ~0.068s with a 550× faster time-to-first-row vs openpyxl.*
+*Performance note: RPyXL reads 100k rows in ~0.068s with a 550× faster time-to-first-row vs openpyxl.*
 
 ### 2.4 Slicing & Iteration
 
@@ -106,19 +106,19 @@ rows_1_5 = ws[1:5]           # 2D tuple of row tuples
 
 ## 3. Behavioral Differences & Scope
 
-| Area | openpyxl Behavior | PyXL Behavior | Migration Tip |
+| Area | openpyxl Behavior | RPyXL Behavior | Migration Tip |
 |---|---|---|---|
 | **Formulas** | Parses formula strings, caches values | Preserves formulas (`=SUM(A1:A10)`) and writes them directly | Formula evaluation engine is planned for v0.2 |
-| **VBA Macros** | `keep_vba=True` retains macro XML | Accepts `keep_vba` parameter; macro binaries are omitted | PyXL is focused on high-speed tabular data processing |
+| **VBA Macros** | `keep_vba=True` retains macro XML | Accepts `keep_vba` parameter; macro binaries are omitted | RPyXL is focused on high-speed tabular data processing |
 | **Charts** | `openpyxl.chart.*` DrawingML generators | Charts planned for v0.3 | If you need chart rendering, generate charts in a post-processing step |
-| **Styles** | Full XML style engine | `pyxl.styles` provides compatible `Font`, `PatternFill`, `Alignment`, `Border`, `Side` | Basic styles supported; advanced conditional rules in v0.2 |
+| **Styles** | Full XML style engine | `rpyxl.styles` provides compatible `Font`, `PatternFill`, `Alignment`, `Border`, `Side` | Basic styles supported; advanced conditional rules in v0.2 |
 | **Coordinate Validation** | Validates bounds in Python | Validates bounds in Rust; raises `ValueError` on coordinates < 1 | Exception types inherit from standard Python exceptions |
 
 ---
 
 ## 4. Performance Expectations
 
-Expect the following performance improvements when migrating to PyXL:
+Expect the following performance improvements when migrating to RPyXL:
 
 - **4.7× to 8.1× faster file saving** across small to large workbooks.
 - **5.1× to 8.7× faster file loading**.

@@ -1,7 +1,7 @@
-"""Unit tests for PyXL Workbook operations."""
+"""Unit tests for RPyXL Workbook operations."""
 
 import pytest
-from pyxl import Workbook
+from rpyxl import Workbook
 
 
 def test_workbook_initialization():

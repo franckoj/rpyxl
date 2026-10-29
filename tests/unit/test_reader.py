@@ -1,8 +1,8 @@
 import os
 import datetime
 import pytest
-import pyxl
-from pyxl import load_workbook
+import rpyxl
+from rpyxl import load_workbook
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
 

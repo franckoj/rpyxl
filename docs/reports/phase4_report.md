@@ -3,13 +3,13 @@
 **Date**: 2026-10-20  
 **Phase**: 4 of 6  
 **Status**: Completed  
-**Artifact**: PyXL v0.1.0-alpha openpyxl Compatibility Layer  
+**Artifact**: RPyXL v0.1.0-alpha openpyxl Compatibility Layer
 
 ---
 
 ## 1. Executive Summary
 
-Phase 4 of the PyXL project expands the Python compatibility layer to achieve high-fidelity drop-in compatibility with `openpyxl`. PyXL now supports the complete priority API surface defined in the project specification, including comprehensive worksheet slicing and indexing syntax, cell-level attributes, workbook management operations, utility functions, openpyxl exception hierarchies, and foundational styling dataclasses.
+Phase 4 of the RPyXL project expands the Python compatibility layer to achieve high-fidelity drop-in compatibility with `openpyxl`. RPyXL now supports the complete priority API surface defined in the project specification, including comprehensive worksheet slicing and indexing syntax, cell-level attributes, workbook management operations, utility functions, openpyxl exception hierarchies, and foundational styling dataclasses.
 
 All 78 tests across Rust unit tests, Python unit tests, and cross-compatibility tests pass with 100% success rate in the isolated Docker container environment, with zero compiler warnings and zero Clippy linter warnings under `-D warnings`.
 
@@ -50,23 +50,23 @@ Full subscripting (`__getitem__`) implemented in Rust/PyO3 for high performance:
 - **`cell.hyperlink`**: Get/set cell hyperlink target URL.
 - **`cell.parent`**: Provides direct reference back to the containing `Worksheet`.
 - **`cell.data_type`**: Reflects openpyxl single-character codes (`'s'`, `'n'`, `'b'`, `'f'`, `'d'`, `'null'`), with setter support.
-- **Cell type constants**: Defined in `pyxl.cell`: `TYPE_STRING`, `TYPE_NUMERIC`, `TYPE_BOOL`, `TYPE_NULL`, `TYPE_INLINE`, `TYPE_ERROR`, `TYPE_FORMULA`, `TYPE_FORMULA_CACHE_STRING`, `TYPE_DATE`.
+- **Cell type constants**: Defined in `rpyxl.cell`: `TYPE_STRING`, `TYPE_NUMERIC`, `TYPE_BOOL`, `TYPE_NULL`, `TYPE_INLINE`, `TYPE_ERROR`, `TYPE_FORMULA`, `TYPE_FORMULA_CACHE_STRING`, `TYPE_DATE`.
 
 ### 2.5 Utilities & Exceptions Module
-- **`pyxl.utils.coordinate`**:
+- **`rpyxl.utils.coordinate`**:
   - `get_column_letter(idx)`
   - `column_index_from_string(col)`
   - `coordinate_to_tuple(coord)`
   - `range_boundaries(range_str)` -> `(min_col, min_row, max_col, max_row)`
   - `quote_sheetname(sheetname)` -> escapes single quotes and wraps in `'`
-- **`pyxl.utils.exceptions`**:
+- **`rpyxl.utils.exceptions`**:
   - `OpenpyxlException`
   - `InvalidFileException`
   - `SheetTitleException`
   - `CellCoordinatesException`
   - `NamedRangeException`
 
-### 2.6 Styling Module Foundation (`pyxl.styles`)
+### 2.6 Styling Module Foundation (`rpyxl.styles`)
 Openpyxl-compatible dataclasses for seamless imports and cell assignment:
 - `Font(name, size, bold, italic, color)`
 - `PatternFill(fill_type, start_color, end_color)`
@@ -82,14 +82,14 @@ Openpyxl-compatible dataclasses for seamless imports and cell assignment:
 ### 3.1 Test Execution Summary
 Executed inside the containerized Debian Linux (`aarch64`) environment:
 ```bash
-docker run --rm -v "$(pwd)":/workspace -w /workspace pyxl-test bash -c \
+docker run --rm -v "$(pwd)":/workspace -w /workspace rpyxl-test bash -c \
   "cargo test --workspace && maturin develop --release && pytest tests/ -v"
 ```
 
 | Test Category | Suite / File | Tests | Result |
 |---|---|---|---|
-| Rust Core Engine | `crates/pyxl-core` | 16 | PASSED |
-| Rust OOXML Serializer | `crates/pyxl-ooxml` | 5 | PASSED |
+| Rust Core Engine | `crates/rpyxl-core` | 16 | PASSED |
+| Rust OOXML Serializer | `crates/rpyxl-ooxml` | 5 | PASSED |
 | Python Unit: Cell | `tests/unit/test_cell.py` | 4 | PASSED |
 | Python Unit: Workbook | `tests/unit/test_workbook.py` | 8 | PASSED |
 | Python Unit: Worksheet | `tests/unit/test_worksheet.py` | 7 | PASSED |

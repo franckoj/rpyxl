@@ -2,8 +2,8 @@
 
 import datetime
 import pytest
-import pyxl
-from pyxl.cell import (
+import rpyxl
+from rpyxl.cell import (
     TYPE_STRING,
     TYPE_NUMERIC,
     TYPE_BOOL,
@@ -11,21 +11,21 @@ from pyxl.cell import (
     TYPE_FORMULA,
     TYPE_DATE,
 )
-from pyxl.utils import (
+from rpyxl.utils import (
     get_column_letter,
     column_index_from_string,
     coordinate_to_tuple,
     range_boundaries,
     quote_sheetname,
 )
-from pyxl.utils.exceptions import (
+from rpyxl.utils.exceptions import (
     OpenpyxlException,
     InvalidFileException,
     SheetTitleException,
     CellCoordinatesException,
     NamedRangeException,
 )
-from pyxl.styles import Font, PatternFill, Alignment, Border, Side, Color
+from rpyxl.styles import Font, PatternFill, Alignment, Border, Side, Color
 
 import openpyxl
 from openpyxl.utils import (
@@ -38,7 +38,7 @@ class TestWorkbookCompatibility:
     """Test Workbook methods and behaviors against openpyxl."""
 
     def test_workbook_initialization_and_properties(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         assert p_wb.sheetnames == o_wb.sheetnames
@@ -53,7 +53,7 @@ class TestWorkbookCompatibility:
         o_wb.close()
 
     def test_active_sheet_assignment_index_and_object(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws1 = p_wb.create_sheet("Sheet2")
@@ -73,7 +73,7 @@ class TestWorkbookCompatibility:
         o_wb.close()
 
     def test_copy_worksheet(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_wb.active["A1"] = "Data123"
@@ -90,7 +90,7 @@ class TestWorkbookCompatibility:
         o_wb.close()
 
     def test_workbook_index(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws2 = p_wb.create_sheet("Second")
@@ -98,7 +98,7 @@ class TestWorkbookCompatibility:
 
         assert p_wb.index(p_ws2) == o_wb.index(o_ws2)
 
-        other_wb = pyxl.Workbook()
+        other_wb = rpyxl.Workbook()
         other_ws = other_wb.active
         with pytest.raises(ValueError):
             p_wb.index(other_ws)
@@ -112,7 +112,7 @@ class TestWorksheetCompatibility:
     """Test Worksheet slicing, indexing, appending, and iteration against openpyxl."""
 
     def test_cell_arguments_and_validation(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -155,7 +155,7 @@ class TestWorksheetCompatibility:
         o_wb.close()
 
     def test_append_varieties_including_dict(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -187,7 +187,7 @@ class TestWorksheetCompatibility:
         o_wb.close()
 
     def test_slicing_and_indexing_types(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -242,7 +242,7 @@ class TestWorksheetCompatibility:
         o_wb.close()
 
     def test_iter_cols_positional_and_keyword(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -268,7 +268,7 @@ class TestWorksheetCompatibility:
         o_wb.close()
 
     def test_empty_sheet_bounds_and_properties(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -287,7 +287,7 @@ class TestWorksheetCompatibility:
         o_wb.close()
 
     def test_parent_references(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         p_ws = p_wb.active
         p_cell = p_ws["A1"]
 
@@ -301,7 +301,7 @@ class TestCellCompatibility:
     """Test Cell attributes, formats, data types, and setters."""
 
     def test_cell_data_types_and_date_check(self):
-        p_wb = pyxl.Workbook()
+        p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
         p_ws = p_wb.active
@@ -333,7 +333,7 @@ class TestCellCompatibility:
         o_wb.close()
 
     def test_cell_styling_properties(self):
-        wb = pyxl.Workbook()
+        wb = rpyxl.Workbook()
         ws = wb.active
         cell = ws["A1"]
 

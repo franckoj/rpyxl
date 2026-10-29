@@ -1,4 +1,4 @@
-# PyXL Comprehensive Benchmark Report (Phases 1, 2, and 3)
+# RPyXL Comprehensive Benchmark Report (Phases 1, 2, and 3)
 
 Generated at: 2026-10-20 12:27:10 UTC
 
@@ -6,7 +6,7 @@ Generated at: 2026-10-20 12:27:10 UTC
 
 ## 1. Phase 3: High-Performance XLSX Writer & CPU Utilization Benchmarks
 
-| Operation | openpyxl (Wall) | PyXL (Wall) | Speedup | openpyxl CPU Time | PyXL CPU Time | openpyxl RSS | PyXL RSS | PyXL Throughput |
+| Operation | openpyxl (Wall) | RPyXL (Wall) | Speedup | openpyxl CPU Time | RPyXL CPU Time | openpyxl RSS | RPyXL RSS | RPyXL Throughput |
 |---|---|---|---|---|---|---|---|---|
 | Standard Save (10,000 rows x 10 cols) | 0.4137s | 0.0422s | **9.80x** | 0.416s (106%) | 0.042s (100%) | 137.9 MB | 147.7 MB | 236,988 rows/s |
 | Write-Only Streaming (10,000 rows x 10 cols) | 0.4449s | 0.0567s | **7.85x** | 0.447s (126%) | 0.057s (270%) | 137.3 MB | 137.3 MB | 176,472 rows/s |
@@ -29,7 +29,7 @@ Generated at: 2026-10-20 12:27:10 UTC
 
 ## 2. Phase 2: High-Performance XLSX Reader Benchmarks
 
-| Operation | openpyxl | PyXL | Speedup | openpyxl RSS | PyXL RSS | PyXL Throughput |
+| Operation | openpyxl | RPyXL | Speedup | openpyxl RSS | RPyXL RSS | RPyXL Throughput |
 |---|---|---|---|---|---|---|
 | Full XLSX Read (Standard) | 0.5753s | 0.0623s | **9.24x** | 162.9 MB | 126.5 MB | 160,609 rows/s |
 | Full XLSX Read (read_only=True) | 0.3288s | 0.0687s | **4.79x** | 109.9 MB | 126.7 MB | 145,617 rows/s |
@@ -50,7 +50,7 @@ Generated at: 2026-10-20 12:27:10 UTC
 
 ## 3. Phase 1: In-Memory Operations Benchmarks
 
-| Operation | Dataset | openpyxl (s) | PyXL (s) | Speedup | openpyxl RSS | PyXL RSS | Mem Reduction | PyXL Throughput |
+| Operation | Dataset | openpyxl (s) | RPyXL (s) | Speedup | openpyxl RSS | RPyXL RSS | Mem Reduction | RPyXL Throughput |
 |---|---|---|---|---|---|---|---|---|
 | Workbook Creation | 100 instances | 0.0254s | 0.0s | **729.11x** | 0.63 MB | 0.05 MB | 92.1% | 2,874,306.6 workbooks/s |
 | Cell Access (Write) | 100x100 (10,000 cells) | 0.0029s | 0.0045s | **0.65x** | 77.93 MB | 76.57 MB | 1.7% | 2,217,622.9 cells/s |

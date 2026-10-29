@@ -1,27 +1,27 @@
-# PyXL Architecture
+# RPyXL Architecture
 
 ## Overview
 
-PyXL is a high-performance alternative to openpyxl designed for Python applications needing speed and bounded memory consumption when working with Excel workbooks.
+RPyXL is a high-performance alternative to openpyxl designed for Python applications needing speed and bounded memory consumption when working with Excel workbooks.
 
 The library is organized in a three-tier architecture:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│  Python Public API Layer (python/pyxl)                 │
+│  Python Public API Layer (python/rpyxl)                 │
 │  - openpyxl-compatible signatures & docstrings         │
 │  - Type definitions (py.typed)                         │
 └───────────────────────────▲────────────────────────────┘
                             │ PyO3 ABI Boundary
 ┌───────────────────────────▼────────────────────────────┐
-│  PyO3 Extension Module (crates/pyxl-python / _core)    │
+│  PyO3 Extension Module (crates/rpyxl-python / _core)    │
 │  - Python-to-Rust type conversion                      │
 │  - Reference management via Arc<RwLock<...>>           │
 │  - Error translation to Python exception hierarchy     │
 └───────────────────────────▲────────────────────────────┘
                             │ Pure Rust calls
 ┌───────────────────────────▼────────────────────────────┐
-│  Core Engine (crates/pyxl-core)                        │
+│  Core Engine (crates/rpyxl-core)                        │
 │  - In-memory Workbook, Worksheet, Cell models          │
 │  - Sparse cell indexing (BTreeMap<(row, col), Cell>)   │
 │  - Coordinate conversions (1-based, letters <-> idx)   │

@@ -1,4 +1,4 @@
-"""Phase 5 Multi-Scale Benchmark Runner: PyXL vs openpyxl vs calamine.
+"""Phase 5 Multi-Scale Benchmark Runner: RPyXL vs openpyxl vs calamine.
 
 Scales:
 - Small: 1k cells (100 rows x 10 cols)
@@ -148,9 +148,9 @@ def ensure_scale_file(rows, cols):
         return filepath
 
     print(f"  Generating test file ({rows:,} rows x {cols} cols) -> {filepath}...")
-    import pyxl
+    import rpyxl
 
-    wb = pyxl.Workbook(write_only=True)
+    wb = rpyxl.Workbook(write_only=True)
     ws = wb.create_sheet("Data")
     headers = [f"Col_{c}" for c in range(1, cols + 1)]
     ws.append(headers)
@@ -192,11 +192,11 @@ def bench_standard_save(lib_name, rows, cols):
                 wb.save(tmp.name)
         return _run
     else:
-        import pyxl
+        import rpyxl
 
         def _run():
             with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=True) as tmp:
-                wb = pyxl.Workbook()
+                wb = rpyxl.Workbook()
                 ws = wb.active
                 for r in range(1, rows + 1):
                     ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
@@ -217,11 +217,11 @@ def bench_write_only_save(lib_name, rows, cols):
                 wb.save(tmp.name)
         return _run
     else:
-        import pyxl
+        import rpyxl
 
         def _run():
             with tempfile.NamedTemporaryFile(suffix=".xlsx", delete=True) as tmp:
-                wb = pyxl.Workbook(write_only=True)
+                wb = rpyxl.Workbook(write_only=True)
                 ws = wb.create_sheet("Stream")
                 for r in range(1, rows + 1):
                     ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
@@ -242,11 +242,11 @@ def bench_standard_load(lib_name, filepath):
             wb.close()
             return cnt
         return _run
-    elif lib_name == "pyxl":
-        import pyxl
+    elif lib_name == "rpyxl":
+        import rpyxl
 
         def _run():
-            wb = pyxl.load_workbook(filepath, data_only=True)
+            wb = rpyxl.load_workbook(filepath, data_only=True)
             ws = wb.active
             cnt = 0
             for row in ws.iter_rows(values_only=True):
@@ -280,11 +280,11 @@ def bench_read_only_stream(lib_name, filepath):
             wb.close()
             return cnt
         return _run
-    elif lib_name == "pyxl":
-        import pyxl
+    elif lib_name == "rpyxl":
+        import rpyxl
 
         def _run():
-            with pyxl.load_workbook(filepath, read_only=True) as wb:
+            with rpyxl.load_workbook(filepath, read_only=True) as wb:
                 ws = wb.active
                 cnt = 0
                 for row in ws.iter_rows(values_only=True):
@@ -304,13 +304,13 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     # 1. Standard Save Wall Time Chart
     plt.figure(figsize=(10, 6))
     op_std_times = [results_by_scale[s["name"]]["std_save_openpyxl"]["median_sec"] for s in SCALES]
-    px_std_times = [results_by_scale[s["name"]]["std_save_pyxl"]["median_sec"] for s in SCALES]
+    px_std_times = [results_by_scale[s["name"]]["std_save_rpyxl"]["median_sec"] for s in SCALES]
 
     x = range(len(scale_labels))
     width = 0.35
 
     plt.bar([i - width/2 for i in x], op_std_times, width, label="openpyxl (Standard)", color="#E53935")
-    plt.bar([i + width/2 for i in x], px_std_times, width, label="PyXL (Standard)", color="#1E88E5")
+    plt.bar([i + width/2 for i in x], px_std_times, width, label="RPyXL (Standard)", color="#1E88E5")
 
     plt.yscale("log")
     plt.ylabel("Wall Time in Seconds (Log Scale)", fontsize=11)
@@ -330,10 +330,10 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     # 2. Write-Only Streaming Time Chart
     plt.figure(figsize=(10, 6))
     op_wo_times = [results_by_scale[s["name"]]["write_only_openpyxl"]["median_sec"] for s in SCALES]
-    px_wo_times = [results_by_scale[s["name"]]["write_only_pyxl"]["median_sec"] for s in SCALES]
+    px_wo_times = [results_by_scale[s["name"]]["write_only_rpyxl"]["median_sec"] for s in SCALES]
 
     plt.bar([i - width/2 for i in x], op_wo_times, width, label="openpyxl (write_only)", color="#FB8C00")
-    plt.bar([i + width/2 for i in x], px_wo_times, width, label="PyXL (write_only)", color="#43A047")
+    plt.bar([i + width/2 for i in x], px_wo_times, width, label="RPyXL (write_only)", color="#43A047")
 
     plt.yscale("log")
     plt.ylabel("Wall Time in Seconds (Log Scale)", fontsize=11)
@@ -353,12 +353,12 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     # 3. Reading Time Comparison Chart (Standard & Read-Only)
     plt.figure(figsize=(11, 6))
     op_ro_times = [results_by_scale[s["name"]]["read_ro_openpyxl"]["median_sec"] for s in SCALES]
-    px_ro_times = [results_by_scale[s["name"]]["read_ro_pyxl"]["median_sec"] for s in SCALES]
+    px_ro_times = [results_by_scale[s["name"]]["read_ro_rpyxl"]["median_sec"] for s in SCALES]
     cal_times = [results_by_scale[s["name"]]["read_std_calamine"]["median_sec"] for s in SCALES]
 
     w3 = 0.25
     plt.bar([i - w3 for i in x], op_ro_times, w3, label="openpyxl (read_only)", color="#E53935")
-    plt.bar([i for i in x], px_ro_times, w3, label="PyXL (read_only)", color="#1E88E5")
+    plt.bar([i for i in x], px_ro_times, w3, label="RPyXL (read_only)", color="#1E88E5")
     plt.bar([i + w3 for i in x], cal_times, w3, label="python-calamine", color="#8E24AA")
 
     plt.yscale("log")
@@ -379,10 +379,10 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     # 4. Memory Footprint Chart (Peak RSS in MB)
     plt.figure(figsize=(10, 6))
     op_rss = [results_by_scale[s["name"]]["std_save_openpyxl"]["peak_rss_mb"] for s in SCALES]
-    px_rss = [results_by_scale[s["name"]]["std_save_pyxl"]["peak_rss_mb"] for s in SCALES]
+    px_rss = [results_by_scale[s["name"]]["std_save_rpyxl"]["peak_rss_mb"] for s in SCALES]
 
     plt.plot(scale_labels, op_rss, marker="o", linewidth=2.5, color="#E53935", label="openpyxl Peak RSS (MB)")
-    plt.plot(scale_labels, px_rss, marker="s", linewidth=2.5, color="#1E88E5", label="PyXL Peak RSS (MB)")
+    plt.plot(scale_labels, px_rss, marker="s", linewidth=2.5, color="#1E88E5", label="RPyXL Peak RSS (MB)")
 
     plt.ylabel("Peak RSS Memory (MB)", fontsize=11)
     plt.title("Peak RAM Usage Scaling (Lower is Better)", fontsize=13, fontweight="bold")
@@ -423,37 +423,37 @@ def run_all_scales():
         bench_file = ensure_scale_file(rows, cols)
 
         # 2. Standard Save
-        print("  Running Standard Save: openpyxl vs PyXL...")
+        print("  Running Standard Save: openpyxl vs RPyXL...")
         m_save_op = measure_benchmark(bench_standard_save("openpyxl", rows, cols))
-        m_save_px = measure_benchmark(bench_standard_save("pyxl", rows, cols))
+        m_save_px = measure_benchmark(bench_standard_save("rpyxl", rows, cols))
 
         # 3. Write-Only Streaming
-        print("  Running Write-Only Streaming: openpyxl vs PyXL...")
+        print("  Running Write-Only Streaming: openpyxl vs RPyXL...")
         m_wo_op = measure_benchmark(bench_write_only_save("openpyxl", rows, cols))
-        m_wo_px = measure_benchmark(bench_write_only_save("pyxl", rows, cols))
+        m_wo_px = measure_benchmark(bench_write_only_save("rpyxl", rows, cols))
 
         # 4. Standard Load
-        print("  Running Standard Load: openpyxl vs PyXL vs calamine...")
+        print("  Running Standard Load: openpyxl vs RPyXL vs calamine...")
         m_load_op = measure_benchmark(bench_standard_load("openpyxl", bench_file))
-        m_load_px = measure_benchmark(bench_standard_load("pyxl", bench_file))
+        m_load_px = measure_benchmark(bench_standard_load("rpyxl", bench_file))
         m_load_cal = measure_benchmark(bench_standard_load("calamine", bench_file))
 
         # 5. Read-Only Streaming
-        print("  Running Read-Only Streaming: openpyxl vs PyXL...")
+        print("  Running Read-Only Streaming: openpyxl vs RPyXL...")
         m_ro_op = measure_benchmark(bench_read_only_stream("openpyxl", bench_file))
-        m_ro_px = measure_benchmark(bench_read_only_stream("pyxl", bench_file))
+        m_ro_px = measure_benchmark(bench_read_only_stream("rpyxl", bench_file))
 
         results_by_scale[scale_name] = {
             "scale": s,
             "std_save_openpyxl": m_save_op,
-            "std_save_pyxl": m_save_px,
+            "std_save_rpyxl": m_save_px,
             "write_only_openpyxl": m_wo_op,
-            "write_only_pyxl": m_wo_px,
+            "write_only_rpyxl": m_wo_px,
             "read_std_openpyxl": m_load_op,
-            "read_std_pyxl": m_load_px,
+            "read_std_rpyxl": m_load_px,
             "read_std_calamine": m_load_cal,
             "read_ro_openpyxl": m_ro_op,
-            "read_ro_pyxl": m_ro_px,
+            "read_ro_rpyxl": m_ro_px,
         }
 
         # Compute speedups
@@ -470,23 +470,23 @@ def run_all_scales():
             "Scale": scale_name,
             "Cells": f"{cells:,}",
             "Save_openpyxl": f"{m_save_op['median_sec']:.4f}s",
-            "Save_pyxl": f"{m_save_px['median_sec']:.4f}s",
+            "Save_rpyxl": f"{m_save_px['median_sec']:.4f}s",
             "Save_Speedup": f"{save_sp:.2f}x",
             "Save_Throughput": f"{px_save_throughput:,.0f} cells/s",
             "WO_openpyxl": f"{m_wo_op['median_sec']:.4f}s",
-            "WO_pyxl": f"{m_wo_px['median_sec']:.4f}s",
+            "WO_rpyxl": f"{m_wo_px['median_sec']:.4f}s",
             "WO_Speedup": f"{wo_sp:.2f}x",
             "WO_Throughput": f"{px_wo_throughput:,.0f} cells/s",
             "Load_openpyxl": f"{m_load_op['median_sec']:.4f}s",
-            "Load_pyxl": f"{m_load_px['median_sec']:.4f}s",
+            "Load_rpyxl": f"{m_load_px['median_sec']:.4f}s",
             "Load_Speedup": f"{load_sp:.2f}x",
             "RO_openpyxl": f"{m_ro_op['median_sec']:.4f}s",
-            "RO_pyxl": f"{m_ro_px['median_sec']:.4f}s",
+            "RO_rpyxl": f"{m_ro_px['median_sec']:.4f}s",
             "RO_Speedup": f"{ro_sp:.2f}x",
             "RO_Throughput": f"{px_ro_throughput:,.0f} cells/s",
             "RAM_openpyxl": f"{m_save_op['peak_rss_mb']:.1f} MB",
-            "RAM_pyxl": f"{m_save_px['peak_rss_mb']:.1f} MB",
-            "CPU_util_pyxl": f"{m_save_px['cpu_util_pct']:.0f}%",
+            "RAM_rpyxl": f"{m_save_px['peak_rss_mb']:.1f} MB",
+            "CPU_util_rpyxl": f"{m_save_px['cpu_util_pct']:.0f}%",
         })
 
     # Generate charts
@@ -497,21 +497,21 @@ def run_all_scales():
     os.makedirs("benchmarks/reports", exist_ok=True)
     md_path = "benchmarks/reports/phase5_multiscale_report.md"
     with open(md_path, "w") as f:
-        f.write("# PyXL Phase 5 Multi-Scale Benchmark Report\n\n")
+        f.write("# RPyXL Phase 5 Multi-Scale Benchmark Report\n\n")
         f.write(f"Generated at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
         f.write(f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n")
 
         f.write("## 1. Multi-Scale Execution Summary\n\n")
-        f.write("| Scale | Cells | Std Save openpyxl | Std Save PyXL | Save Speedup | Write-Only openpyxl | Write-Only PyXL | WO Speedup | Read openpyxl | Read PyXL | Read Speedup | PyXL Peak RAM | openpyxl Peak RAM |\n")
+        f.write("| Scale | Cells | Std Save openpyxl | Std Save RPyXL | Save Speedup | Write-Only openpyxl | Write-Only RPyXL | WO Speedup | Read openpyxl | Read RPyXL | Read Speedup | RPyXL Peak RAM | openpyxl Peak RAM |\n")
         f.write("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
         for r in summary_rows:
-            f.write(f"| {r['Scale']} | {r['Cells']} | {r['Save_openpyxl']} | {r['Save_pyxl']} | **{r['Save_Speedup']}** | {r['WO_openpyxl']} | {r['WO_pyxl']} | **{r['WO_Speedup']}** | {r['RO_openpyxl']} | {r['RO_pyxl']} | **{r['RO_Speedup']}** | {r['RAM_pyxl']} | {r['RAM_openpyxl']} |\n")
+            f.write(f"| {r['Scale']} | {r['Cells']} | {r['Save_openpyxl']} | {r['Save_rpyxl']} | **{r['Save_Speedup']}** | {r['WO_openpyxl']} | {r['WO_rpyxl']} | **{r['WO_Speedup']}** | {r['RO_openpyxl']} | {r['RO_rpyxl']} | **{r['RO_Speedup']}** | {r['RAM_rpyxl']} | {r['RAM_openpyxl']} |\n")
 
         f.write("\n## 2. Detailed Throughput & Performance\n\n")
-        f.write("| Scale | Standard Save Throughput | Write-Only Throughput | Read-Only Streaming Throughput | PyXL CPU Utilization |\n")
+        f.write("| Scale | Standard Save Throughput | Write-Only Throughput | Read-Only Streaming Throughput | RPyXL CPU Utilization |\n")
         f.write("|---|---|---|---|---|\n")
         for r in summary_rows:
-            f.write(f"| {r['Scale']} | **{r['Save_Throughput']}** | **{r['WO_Throughput']}** | **{r['RO_Throughput']}** | {r['CPU_util_pyxl']} |\n")
+            f.write(f"| {r['Scale']} | **{r['Save_Throughput']}** | **{r['WO_Throughput']}** | **{r['RO_Throughput']}** | {r['CPU_util_rpyxl']} |\n")
 
         f.write("\n## 3. Visual Performance Comparisons\n\n")
         f.write("### 3.1 Standard In-Memory Save Time Across Scales\n")

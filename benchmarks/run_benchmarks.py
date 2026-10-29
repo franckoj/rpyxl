@@ -1,10 +1,10 @@
-"""Comprehensive benchmark runner for PyXL vs openpyxl (Phase 1, Phase 2, and Phase 3).
+"""Comprehensive benchmark runner for RPyXL vs openpyxl (Phase 1, Phase 2, and Phase 3).
 
 Measures:
 - Phase 1: In-Memory Operations (Workbook creation, cell access, append, iteration)
 - Phase 2: XLSX File Reading (Standard loading, streaming read_only, time to first row)
 - Phase 3: High-Performance XLSX Writing (Standard save, streaming write-only, 10k & 50k rows, round-trip)
-- Baselines: openpyxl (standard & write_only), PyXL (standard & write_only), python-calamine
+- Baselines: openpyxl (standard & write_only), RPyXL (standard & write_only), python-calamine
 - Metrics: Wall-clock time (median, mean, min, max, stdev), CPU time (user + sys), CPU utilization (%), Peak RSS, Throughput, Speedup
 - Generates visual plots (PNG) and Markdown/JSON reports
 """
@@ -702,7 +702,7 @@ def generate_phase3_plots(p3_data):
     fig, ax = plt.subplots(figsize=(12, 6))
     bars = ax.bar(ops, times, color=colors[:len(ops)], width=0.55)
     ax.set_ylabel("Execution Time (seconds) - Lower is better")
-    ax.set_title("XLSX Writing Execution Time: PyXL vs openpyxl")
+    ax.set_title("XLSX Writing Execution Time: RPyXL vs openpyxl")
     for bar in bars:
         h = bar.get_height()
         ax.annotate(f"{h:.3f}s",
@@ -718,10 +718,10 @@ def generate_phase3_plots(p3_data):
     fig, ax = plt.subplots(figsize=(10, 5))
     speedup_ops = []
     speedups = []
-    for pair in [("Standard Save (10k)", "openpyxl (Std Save 10k)", "PyXL (Std Save 10k)"),
-                 ("Write-Only Streaming (10k)", "openpyxl (Write-Only 10k)", "PyXL (Write-Only 10k)"),
-                 ("Write-Only Large (50k)", "openpyxl (Write-Only 50k)", "PyXL (Write-Only 50k)"),
-                 ("Roundtrip (5k)", "openpyxl (Roundtrip 5k)", "PyXL (Roundtrip 5k)")]:
+    for pair in [("Standard Save (10k)", "openpyxl (Std Save 10k)", "RPyXL (Std Save 10k)"),
+                 ("Write-Only Streaming (10k)", "openpyxl (Write-Only 10k)", "RPyXL (Write-Only 10k)"),
+                 ("Write-Only Large (50k)", "openpyxl (Write-Only 50k)", "RPyXL (Write-Only 50k)"),
+                 ("Roundtrip (5k)", "openpyxl (Roundtrip 5k)", "RPyXL (Roundtrip 5k)")]:
         label, op_name, px_name = pair
         op_item = next((x for x in p3_data if x["name"] == op_name), None)
         px_item = next((x for x in p3_data if x["name"] == px_name), None)
@@ -733,7 +733,7 @@ def generate_phase3_plots(p3_data):
     bars = ax.bar(speedup_ops, speedups, color="#27ae60", width=0.45)
     ax.axhline(1.0, color="gray", linestyle="--", linewidth=1, label="Baseline (openpyxl = 1.0x)")
     ax.set_ylabel("Speedup Multiplier vs openpyxl (Higher is better)")
-    ax.set_title("PyXL Writing Speedup over openpyxl")
+    ax.set_title("RPyXL Writing Speedup over openpyxl")
     for bar in bars:
         h = bar.get_height()
         ax.annotate(f"{h:.1f}x",
@@ -787,7 +787,7 @@ def run_all():
     bench_file = ensure_benchmark_file(rows=10000, cols=10)
 
     print("================================================================================")
-    print("PyXL Comprehensive Benchmark Suite (Phase 1, Phase 2, and Phase 3)")
+    print("RPyXL Comprehensive Benchmark Suite (Phase 1, Phase 2, and Phase 3)")
     print("================================================================================")
 
     # -------------------------------------------------------------------------
@@ -804,26 +804,26 @@ def run_all():
     p1_results = []
     for name, fn in p1_benchmarks:
         print(f"  Measuring {name}...")
-        pyxl_m = compute_metrics(fn("pyxl"))
+        rpyxl_m = compute_metrics(fn("rpyxl"))
         openpyxl_m = compute_metrics(fn("openpyxl"))
 
-        speedup = openpyxl_m["median_sec"] / pyxl_m["median_sec"] if pyxl_m["median_sec"] > 0 else 1.0
+        speedup = openpyxl_m["median_sec"] / rpyxl_m["median_sec"] if rpyxl_m["median_sec"] > 0 else 1.0
         mem_diff_pct = (
-            (1.0 - (pyxl_m["peak_rss_mb"] / openpyxl_m["peak_rss_mb"])) * 100
+            (1.0 - (rpyxl_m["peak_rss_mb"] / openpyxl_m["peak_rss_mb"])) * 100
             if openpyxl_m["peak_rss_mb"] > 0
             else 0.0
         )
 
         p1_results.append({
-            "Operation": pyxl_m["operation"],
-            "Dataset": pyxl_m["dataset"],
+            "Operation": rpyxl_m["operation"],
+            "Dataset": rpyxl_m["dataset"],
             "openpyxl_time_s": round(openpyxl_m["median_sec"], 4),
-            "pyxl_time_s": round(pyxl_m["median_sec"], 4),
+            "rpyxl_time_s": round(rpyxl_m["median_sec"], 4),
             "speedup": round(speedup, 2),
             "openpyxl_rss_mb": openpyxl_m["peak_rss_mb"],
-            "pyxl_rss_mb": pyxl_m["peak_rss_mb"],
+            "rpyxl_rss_mb": rpyxl_m["peak_rss_mb"],
             "mem_reduction_pct": round(mem_diff_pct, 1),
-            "pyxl_throughput": f"{round(pyxl_m['throughput'], 1):,} {pyxl_m['unit_name']}/s",
+            "rpyxl_throughput": f"{round(rpyxl_m['throughput'], 1):,} {rpyxl_m['unit_name']}/s",
             "openpyxl_throughput": f"{round(openpyxl_m['throughput'], 1):,} {openpyxl_m['unit_name']}/s",
         })
 
@@ -833,67 +833,67 @@ def run_all():
     print("\n>>> Running Phase 2 XLSX Reader Benchmarks (10,000 rows x 10 cols)...")
     m_op_std = compute_metrics(bench_load_full_workbook("openpyxl", bench_file, read_only=False))
     m_op_ro = compute_metrics(bench_load_full_workbook("openpyxl", bench_file, read_only=True))
-    m_px_std = compute_metrics(bench_load_full_workbook("pyxl", bench_file, read_only=False))
-    m_px_ro = compute_metrics(bench_load_full_workbook("pyxl", bench_file, read_only=True))
+    m_px_std = compute_metrics(bench_load_full_workbook("rpyxl", bench_file, read_only=False))
+    m_px_ro = compute_metrics(bench_load_full_workbook("rpyxl", bench_file, read_only=True))
     m_cal = compute_metrics(bench_calamine_full_read(bench_file))
 
     p2_chart_data = [
         {"name": "openpyxl (Standard)", "time_s": round(m_op_std["median_sec"], 4), "rss_mb": m_op_std["peak_rss_mb"]},
         {"name": "openpyxl (read_only)", "time_s": round(m_op_ro["median_sec"], 4), "rss_mb": m_op_ro["peak_rss_mb"]},
-        {"name": "PyXL (Standard)", "time_s": round(m_px_std["median_sec"], 4), "rss_mb": m_px_std["peak_rss_mb"]},
-        {"name": "PyXL (read_only)", "time_s": round(m_px_ro["median_sec"], 4), "rss_mb": m_px_ro["peak_rss_mb"]},
+        {"name": "RPyXL (Standard)", "time_s": round(m_px_std["median_sec"], 4), "rss_mb": m_px_std["peak_rss_mb"]},
+        {"name": "RPyXL (read_only)", "time_s": round(m_px_ro["median_sec"], 4), "rss_mb": m_px_ro["peak_rss_mb"]},
         {"name": "calamine (C-Rust)", "time_s": round(m_cal["median_sec"], 4), "rss_mb": m_cal["peak_rss_mb"]},
     ]
 
     ttfr_op_std = compute_metrics(bench_time_to_first_row("openpyxl", bench_file, read_only=False))
     ttfr_op_ro = compute_metrics(bench_time_to_first_row("openpyxl", bench_file, read_only=True))
-    ttfr_px_std = compute_metrics(bench_time_to_first_row("pyxl", bench_file, read_only=False))
-    ttfr_px_ro = compute_metrics(bench_time_to_first_row("pyxl", bench_file, read_only=True))
+    ttfr_px_std = compute_metrics(bench_time_to_first_row("rpyxl", bench_file, read_only=False))
+    ttfr_px_ro = compute_metrics(bench_time_to_first_row("rpyxl", bench_file, read_only=True))
 
     p2_results = [
         {
             "Operation": "Full XLSX Read (Standard)",
             "openpyxl": f"{m_op_std['median_sec']:.4f}s",
-            "pyxl": f"{m_px_std['median_sec']:.4f}s",
+            "rpyxl": f"{m_px_std['median_sec']:.4f}s",
             "speedup": f"{m_op_std['median_sec'] / m_px_std['median_sec']:.2f}x",
             "openpyxl_rss": f"{m_op_std['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_px_std['peak_rss_mb']:.1f} MB",
+            "rpyxl_rss": f"{m_px_std['peak_rss_mb']:.1f} MB",
             "throughput": f"{m_px_std['throughput']:,.0f} rows/s",
         },
         {
             "Operation": "Full XLSX Read (read_only=True)",
             "openpyxl": f"{m_op_ro['median_sec']:.4f}s",
-            "pyxl": f"{m_px_ro['median_sec']:.4f}s",
+            "rpyxl": f"{m_px_ro['median_sec']:.4f}s",
             "speedup": f"{m_op_ro['median_sec'] / m_px_ro['median_sec']:.2f}x",
             "openpyxl_rss": f"{m_op_ro['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_px_ro['peak_rss_mb']:.1f} MB",
+            "rpyxl_rss": f"{m_px_ro['peak_rss_mb']:.1f} MB",
             "throughput": f"{m_px_ro['throughput']:,.0f} rows/s",
         },
         {
             "Operation": "Time to First Row (read_only=True)",
             "openpyxl": f"{ttfr_op_ro['median_sec']*1000:.2f} ms",
-            "pyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
+            "rpyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
             "speedup": f"{ttfr_op_ro['median_sec'] / ttfr_px_ro['median_sec']:.2f}x",
             "openpyxl_rss": f"{ttfr_op_ro['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
+            "rpyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
             "throughput": "Instantaneous",
         },
         {
             "Operation": "Time to First Row (Standard vs RO)",
             "openpyxl": f"{ttfr_op_std['median_sec']*1000:.2f} ms",
-            "pyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
+            "rpyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
             "speedup": f"{ttfr_op_std['median_sec'] / ttfr_px_ro['median_sec']:.1f}x",
             "openpyxl_rss": f"{ttfr_op_std['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
+            "rpyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
             "throughput": "Instantaneous",
         },
         {
             "Operation": "Calamine Full Read Baseline",
             "openpyxl": f"{m_op_std['median_sec']:.4f}s (openpyxl std)",
-            "pyxl": f"{m_cal['median_sec']:.4f}s (calamine)",
+            "rpyxl": f"{m_cal['median_sec']:.4f}s (calamine)",
             "speedup": f"{m_op_std['median_sec'] / m_cal['median_sec']:.2f}x",
             "openpyxl_rss": f"{m_op_std['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_cal['peak_rss_mb']:.1f} MB",
+            "rpyxl_rss": f"{m_cal['peak_rss_mb']:.1f} MB",
             "throughput": f"{m_cal['throughput']:,.0f} rows/s",
         },
     ]
@@ -906,75 +906,75 @@ def run_all():
 
     print("  Measuring Standard Save (10,000 rows x 10 cols)...")
     m_w_std_op = compute_metrics(bench_standard_write("openpyxl", rows=10000, cols=10))
-    m_w_std_px = compute_metrics(bench_standard_write("pyxl", rows=10000, cols=10))
+    m_w_std_px = compute_metrics(bench_standard_write("rpyxl", rows=10000, cols=10))
 
     print("  Measuring Write-Only Streaming (10,000 rows x 10 cols)...")
     m_wo_10k_op = compute_metrics(bench_write_only_streaming("openpyxl", rows=10000, cols=10))
-    m_wo_10k_px = compute_metrics(bench_write_only_streaming("pyxl", rows=10000, cols=10))
+    m_wo_10k_px = compute_metrics(bench_write_only_streaming("rpyxl", rows=10000, cols=10))
 
     print("  Measuring Write-Only Streaming Large Dataset (50,000 rows x 10 cols)...")
     m_wo_50k_op = compute_metrics(bench_write_only_streaming("openpyxl", rows=50000, cols=10))
-    m_wo_50k_px = compute_metrics(bench_write_only_streaming("pyxl", rows=50000, cols=10))
+    m_wo_50k_px = compute_metrics(bench_write_only_streaming("rpyxl", rows=50000, cols=10))
 
     print("  Measuring End-to-End Roundtrip (Write + Read 5,000 rows)...")
     m_rt_op = compute_metrics(bench_roundtrip("openpyxl", rows=5000, cols=10))
-    m_rt_px = compute_metrics(bench_roundtrip("pyxl", rows=5000, cols=10))
+    m_rt_px = compute_metrics(bench_roundtrip("rpyxl", rows=5000, cols=10))
 
     p3_chart_data = [
         {"name": "openpyxl (Std Save 10k)", "time_s": round(m_w_std_op["median_sec"], 4), "cpu_s": round(m_w_std_op["median_cpu_sec"], 4), "cpu_pct": m_w_std_op["cpu_util_pct"], "rss_mb": m_w_std_op["peak_rss_mb"]},
-        {"name": "PyXL (Std Save 10k)", "time_s": round(m_w_std_px["median_sec"], 4), "cpu_s": round(m_w_std_px["median_cpu_sec"], 4), "cpu_pct": m_w_std_px["cpu_util_pct"], "rss_mb": m_w_std_px["peak_rss_mb"]},
+        {"name": "RPyXL (Std Save 10k)", "time_s": round(m_w_std_px["median_sec"], 4), "cpu_s": round(m_w_std_px["median_cpu_sec"], 4), "cpu_pct": m_w_std_px["cpu_util_pct"], "rss_mb": m_w_std_px["peak_rss_mb"]},
         {"name": "openpyxl (Write-Only 10k)", "time_s": round(m_wo_10k_op["median_sec"], 4), "cpu_s": round(m_wo_10k_op["median_cpu_sec"], 4), "cpu_pct": m_wo_10k_op["cpu_util_pct"], "rss_mb": m_wo_10k_op["peak_rss_mb"]},
-        {"name": "PyXL (Write-Only 10k)", "time_s": round(m_wo_10k_px["median_sec"], 4), "cpu_s": round(m_wo_10k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_10k_px["cpu_util_pct"], "rss_mb": m_wo_10k_px["peak_rss_mb"]},
+        {"name": "RPyXL (Write-Only 10k)", "time_s": round(m_wo_10k_px["median_sec"], 4), "cpu_s": round(m_wo_10k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_10k_px["cpu_util_pct"], "rss_mb": m_wo_10k_px["peak_rss_mb"]},
         {"name": "openpyxl (Write-Only 50k)", "time_s": round(m_wo_50k_op["median_sec"], 4), "cpu_s": round(m_wo_50k_op["median_cpu_sec"], 4), "cpu_pct": m_wo_50k_op["cpu_util_pct"], "rss_mb": m_wo_50k_op["peak_rss_mb"]},
-        {"name": "PyXL (Write-Only 50k)", "time_s": round(m_wo_50k_px["median_sec"], 4), "cpu_s": round(m_wo_50k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_50k_px["cpu_util_pct"], "rss_mb": m_wo_50k_px["peak_rss_mb"]},
+        {"name": "RPyXL (Write-Only 50k)", "time_s": round(m_wo_50k_px["median_sec"], 4), "cpu_s": round(m_wo_50k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_50k_px["cpu_util_pct"], "rss_mb": m_wo_50k_px["peak_rss_mb"]},
         {"name": "openpyxl (Roundtrip 5k)", "time_s": round(m_rt_op["median_sec"], 4), "cpu_s": round(m_rt_op["median_cpu_sec"], 4), "cpu_pct": m_rt_op["cpu_util_pct"], "rss_mb": m_rt_op["peak_rss_mb"]},
-        {"name": "PyXL (Roundtrip 5k)", "time_s": round(m_rt_px["median_sec"], 4), "cpu_s": round(m_rt_px["median_cpu_sec"], 4), "cpu_pct": m_rt_px["cpu_util_pct"], "rss_mb": m_rt_px["peak_rss_mb"]},
+        {"name": "RPyXL (Roundtrip 5k)", "time_s": round(m_rt_px["median_sec"], 4), "cpu_s": round(m_rt_px["median_cpu_sec"], 4), "cpu_pct": m_rt_px["cpu_util_pct"], "rss_mb": m_rt_px["peak_rss_mb"]},
     ]
 
     p3_results = [
         {
             "Operation": "Standard Save (10,000 rows x 10 cols)",
             "openpyxl_time": f"{m_w_std_op['median_sec']:.4f}s",
-            "pyxl_time": f"{m_w_std_px['median_sec']:.4f}s",
+            "rpyxl_time": f"{m_w_std_px['median_sec']:.4f}s",
             "speedup": f"{m_w_std_op['median_sec'] / m_w_std_px['median_sec']:.2f}x",
             "openpyxl_cpu": f"{m_w_std_op['median_cpu_sec']:.3f}s ({m_w_std_op['cpu_util_pct']:.0f}%)",
-            "pyxl_cpu": f"{m_w_std_px['median_cpu_sec']:.3f}s ({m_w_std_px['cpu_util_pct']:.0f}%)",
+            "rpyxl_cpu": f"{m_w_std_px['median_cpu_sec']:.3f}s ({m_w_std_px['cpu_util_pct']:.0f}%)",
             "openpyxl_rss": f"{m_w_std_op['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_w_std_px['peak_rss_mb']:.1f} MB",
-            "pyxl_throughput": f"{m_w_std_px['throughput']:,.0f} rows/s",
+            "rpyxl_rss": f"{m_w_std_px['peak_rss_mb']:.1f} MB",
+            "rpyxl_throughput": f"{m_w_std_px['throughput']:,.0f} rows/s",
         },
         {
             "Operation": "Write-Only Streaming (10,000 rows x 10 cols)",
             "openpyxl_time": f"{m_wo_10k_op['median_sec']:.4f}s",
-            "pyxl_time": f"{m_wo_10k_px['median_sec']:.4f}s",
+            "rpyxl_time": f"{m_wo_10k_px['median_sec']:.4f}s",
             "speedup": f"{m_wo_10k_op['median_sec'] / m_wo_10k_px['median_sec']:.2f}x",
             "openpyxl_cpu": f"{m_wo_10k_op['median_cpu_sec']:.3f}s ({m_wo_10k_op['cpu_util_pct']:.0f}%)",
-            "pyxl_cpu": f"{m_wo_10k_px['median_cpu_sec']:.3f}s ({m_wo_10k_px['cpu_util_pct']:.0f}%)",
+            "rpyxl_cpu": f"{m_wo_10k_px['median_cpu_sec']:.3f}s ({m_wo_10k_px['cpu_util_pct']:.0f}%)",
             "openpyxl_rss": f"{m_wo_10k_op['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_wo_10k_px['peak_rss_mb']:.1f} MB",
-            "pyxl_throughput": f"{m_wo_10k_px['throughput']:,.0f} rows/s",
+            "rpyxl_rss": f"{m_wo_10k_px['peak_rss_mb']:.1f} MB",
+            "rpyxl_throughput": f"{m_wo_10k_px['throughput']:,.0f} rows/s",
         },
         {
             "Operation": "Write-Only Streaming (50,000 rows x 10 cols)",
             "openpyxl_time": f"{m_wo_50k_op['median_sec']:.4f}s",
-            "pyxl_time": f"{m_wo_50k_px['median_sec']:.4f}s",
+            "rpyxl_time": f"{m_wo_50k_px['median_sec']:.4f}s",
             "speedup": f"{m_wo_50k_op['median_sec'] / m_wo_50k_px['median_sec']:.2f}x",
             "openpyxl_cpu": f"{m_wo_50k_op['median_cpu_sec']:.3f}s ({m_wo_50k_op['cpu_util_pct']:.0f}%)",
-            "pyxl_cpu": f"{m_wo_50k_px['median_cpu_sec']:.3f}s ({m_wo_50k_px['cpu_util_pct']:.0f}%)",
+            "rpyxl_cpu": f"{m_wo_50k_px['median_cpu_sec']:.3f}s ({m_wo_50k_px['cpu_util_pct']:.0f}%)",
             "openpyxl_rss": f"{m_wo_50k_op['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_wo_50k_px['peak_rss_mb']:.1f} MB",
-            "pyxl_throughput": f"{m_wo_50k_px['throughput']:,.0f} rows/s",
+            "rpyxl_rss": f"{m_wo_50k_px['peak_rss_mb']:.1f} MB",
+            "rpyxl_throughput": f"{m_wo_50k_px['throughput']:,.0f} rows/s",
         },
         {
             "Operation": "Roundtrip Write + Read (5,000 rows x 10 cols)",
             "openpyxl_time": f"{m_rt_op['median_sec']:.4f}s",
-            "pyxl_time": f"{m_rt_px['median_sec']:.4f}s",
+            "rpyxl_time": f"{m_rt_px['median_sec']:.4f}s",
             "speedup": f"{m_rt_op['median_sec'] / m_rt_px['median_sec']:.2f}x",
             "openpyxl_cpu": f"{m_rt_op['median_cpu_sec']:.3f}s ({m_rt_op['cpu_util_pct']:.0f}%)",
-            "pyxl_cpu": f"{m_rt_px['median_cpu_sec']:.3f}s ({m_rt_px['cpu_util_pct']:.0f}%)",
+            "rpyxl_cpu": f"{m_rt_px['median_cpu_sec']:.3f}s ({m_rt_px['cpu_util_pct']:.0f}%)",
             "openpyxl_rss": f"{m_rt_op['peak_rss_mb']:.1f} MB",
-            "pyxl_rss": f"{m_rt_px['peak_rss_mb']:.1f} MB",
-            "pyxl_throughput": f"{m_rt_px['throughput']:,.0f} rows/s",
+            "rpyxl_rss": f"{m_rt_px['peak_rss_mb']:.1f} MB",
+            "rpyxl_throughput": f"{m_rt_px['throughput']:,.0f} rows/s",
         },
     ]
 
@@ -986,15 +986,15 @@ def run_all():
     md_file = "benchmarks/reports/comparison.md"
     env = get_environment_info()
     with open(md_file, "w") as f:
-        f.write("# PyXL Comprehensive Benchmark Report (Phases 1, 2, and 3)\n\n")
+        f.write("# RPyXL Comprehensive Benchmark Report (Phases 1, 2, and 3)\n\n")
         f.write(f"Generated at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
         f.write(f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n")
 
         f.write("## 1. Phase 3: High-Performance XLSX Writer & CPU Utilization Benchmarks\n\n")
-        f.write("| Operation | openpyxl (Wall) | PyXL (Wall) | Speedup | openpyxl CPU Time | PyXL CPU Time | openpyxl RSS | PyXL RSS | PyXL Throughput |\n")
+        f.write("| Operation | openpyxl (Wall) | RPyXL (Wall) | Speedup | openpyxl CPU Time | RPyXL CPU Time | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n")
         f.write("|---|---|---|---|---|---|---|---|---|\n")
         for r in p3_results:
-            f.write(f"| {r['Operation']} | {r['openpyxl_time']} | {r['pyxl_time']} | **{r['speedup']}** | {r['openpyxl_cpu']} | {r['pyxl_cpu']} | {r['openpyxl_rss']} | {r['pyxl_rss']} | {r['pyxl_throughput']} |\n")
+            f.write(f"| {r['Operation']} | {r['openpyxl_time']} | {r['rpyxl_time']} | **{r['speedup']}** | {r['openpyxl_cpu']} | {r['rpyxl_cpu']} | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['rpyxl_throughput']} |\n")
 
         f.write("\n### Phase 3 Performance Graphs\n\n")
         f.write("#### 1. Writing Execution Time (Wall-Clock)\n")
@@ -1007,10 +1007,10 @@ def run_all():
         f.write("![Writing CPU](phase3_cpu_utilization.png)\n\n")
 
         f.write("## 2. Phase 2: High-Performance XLSX Reader Benchmarks\n\n")
-        f.write("| Operation | openpyxl | PyXL | Speedup | openpyxl RSS | PyXL RSS | PyXL Throughput |\n")
+        f.write("| Operation | openpyxl | RPyXL | Speedup | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n")
         f.write("|---|---|---|---|---|---|---|\n")
         for r in p2_results:
-            f.write(f"| {r['Operation']} | {r['openpyxl']} | {r['pyxl']} | **{r['speedup']}** | {r['openpyxl_rss']} | {r['pyxl_rss']} | {r['throughput']} |\n")
+            f.write(f"| {r['Operation']} | {r['openpyxl']} | {r['rpyxl']} | **{r['speedup']}** | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['throughput']} |\n")
 
         f.write("\n### Phase 2 Performance Graphs\n\n")
         f.write("#### 1. Total Reading Execution Time (10,000 rows)\n")
@@ -1021,10 +1021,10 @@ def run_all():
         f.write("![Reading Memory](phase2_memory.png)\n\n")
 
         f.write("## 3. Phase 1: In-Memory Operations Benchmarks\n\n")
-        f.write("| Operation | Dataset | openpyxl (s) | PyXL (s) | Speedup | openpyxl RSS | PyXL RSS | Mem Reduction | PyXL Throughput |\n")
+        f.write("| Operation | Dataset | openpyxl (s) | RPyXL (s) | Speedup | openpyxl RSS | RPyXL RSS | Mem Reduction | RPyXL Throughput |\n")
         f.write("|---|---|---|---|---|---|---|---|---|\n")
         for r in p1_results:
-            f.write(f"| {r['Operation']} | {r['Dataset']} | {r['openpyxl_time_s']}s | {r['pyxl_time_s']}s | **{r['speedup']}x** | {r['openpyxl_rss_mb']} MB | {r['pyxl_rss_mb']} MB | {r['mem_reduction_pct']}% | {r['pyxl_throughput']} |\n")
+            f.write(f"| {r['Operation']} | {r['Dataset']} | {r['openpyxl_time_s']}s | {r['rpyxl_time_s']}s | **{r['speedup']}x** | {r['openpyxl_rss_mb']} MB | {r['rpyxl_rss_mb']} MB | {r['mem_reduction_pct']}% | {r['rpyxl_throughput']} |\n")
 
     results_json = {
         "environment": env,

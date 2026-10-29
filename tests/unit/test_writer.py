@@ -1,11 +1,11 @@
-"""Unit tests for PyXL High-Performance Writer (Standard & Write-Only Modes)."""
+"""Unit tests for RPyXL High-Performance Writer (Standard & Write-Only Modes)."""
 
 import datetime
 from pathlib import Path
 import pytest
 import zipfile
 
-from pyxl import Workbook, load_workbook
+from rpyxl import Workbook, load_workbook
 
 
 class TestStandardWriter:

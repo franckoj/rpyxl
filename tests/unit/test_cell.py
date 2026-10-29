@@ -1,7 +1,7 @@
-"""Unit tests for PyXL Cell operations."""
+"""Unit tests for RPyXL Cell operations."""
 
 import pytest
-from pyxl import Workbook
+from rpyxl import Workbook
 
 
 def test_cell_coordinates_and_properties():

@@ -4,13 +4,13 @@
 **Phase**: 8 of 8  
 **Status**: Completed  
 **Release Tag**: `v0.1.0`  
-**Artifact**: PyXL v0.1.0 Production Release Validation & Distribution Readiness  
+**Artifact**: RPyXL v0.1.0 Production Release Validation & Distribution Readiness
 
 ---
 
 ## 1. Executive Summary
 
-Phase 8 represents the culmination of the PyXL project—a high-performance, memory-safe, Rust-powered alternative to `openpyxl`. Over eight systematic development phases, PyXL has evolved from core architecture and in-memory coordinate models into a fully hardened, multi-platform, openpyxl-compatible spreadsheet engine.
+Phase 8 represents the culmination of the RPyXL project—a high-performance, memory-safe, Rust-powered alternative to `openpyxl`. Over eight systematic development phases, RPyXL has evolved from core architecture and in-memory coordinate models into a fully hardened, multi-platform, openpyxl-compatible spreadsheet engine.
 
 This phase concludes all release gating criteria:
 1. **100% Test Pass Rate**: All 105 tests (21 Rust workspace tests + 84 Python compatibility, unit, and security tests) pass deterministically.
@@ -23,7 +23,7 @@ This phase concludes all release gating criteria:
 
 ## 2. Quality Gates & Test Suite Audit
 
-All quality gates were verified inside the clean containerized environment (`pyxl-test`):
+All quality gates were verified inside the clean containerized environment (`rpyxl-test`):
 
 ```bash
 cargo fmt --all -- --check
@@ -37,8 +37,8 @@ pytest tests/ -v
 
 | Test Domain | Target Crate / Path | Tests Run | Passed | Failed | Execution Time |
 |---|---|---|---|---|---|
-| **Rust Core Primitives** | `crates/pyxl-core` | 16 | **16** | 0 | < 0.01s |
-| **Rust OOXML Serializer/Parser** | `crates/pyxl-ooxml` | 5 | **5** | 0 | < 0.01s |
+| **Rust Core Primitives** | `crates/rpyxl-core` | 16 | **16** | 0 | < 0.01s |
+| **Rust OOXML Serializer/Parser** | `crates/rpyxl-ooxml` | 5 | **5** | 0 | < 0.01s |
 | **Python Unit Tests** | `tests/unit/` | 33 | **33** | 0 | 0.12s |
 | **Python Security & Hardening** | `tests/unit/test_security_hardening.py` | 6 | **6** | 0 | 0.04s |
 | **openpyxl Compatibility Layer** | `tests/compatibility/` | 44 | **44** | 0 | 0.13s |
@@ -82,6 +82,6 @@ The performance improvements achieved across Phases 1 through 5 are verified and
 
 ## 5. Conclusion & Project Milestone
 
-PyXL has successfully satisfied all architectural requirements, compatibility commitments, and performance goals set forth across Phases 1 through 8.
+RPyXL has successfully satisfied all architectural requirements, compatibility commitments, and performance goals set forth across Phases 1 through 8.
 
 The codebase is declared **v0.1.0 Production-Ready** and validated for public release.

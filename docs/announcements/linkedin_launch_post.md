@@ -1,12 +1,12 @@
-# LinkedIn Launch Announcement: PyXL v0.1.0
+# LinkedIn Launch Announcement: RPyXL v0.1.0
 
 ---
 
-🚀 Excited to announce **PyXL (v0.1.0)**: A high-performance, Rust-powered, 100% drop-in alternative to `openpyxl`!
+🚀 Excited to announce **RPyXL (v0.1.0)**: A high-performance, Rust-powered, 100% drop-in alternative to `openpyxl`!
 
 If you've ever dealt with massive `.xlsx` spreadsheets in Python data pipelines, financial models, or ETL jobs, you know the pain: high memory usage, GIL bottlenecks, and scripts grinding to a halt for minutes on large files.
 
-We built **PyXL** to solve this once and for all by pairing bare-metal **Rust performance** with the beloved, ubiquitous **`openpyxl` API**.
+We built **RPyXL** to solve this once and for all by pairing bare-metal **Rust performance** with the beloved, ubiquitous **`openpyxl` API**.
 
 ---
 
@@ -19,7 +19,7 @@ You don’t have to rewrite your codebase or learn a proprietary syntax:
 import openpyxl
 
 # After (Everything else stays identical!)
-import pyxl as openpyxl
+import rpyxl as openpyxl
 
 wb = openpyxl.load_workbook("large_financials.xlsx")
 ws = wb.active
@@ -29,7 +29,7 @@ wb.save("output.xlsx")
 
 ---
 
-### 📊 Benchmark Highlights: PyXL vs openpyxl, xlsxwriter, calamine & rust_xlsxwriter
+### 📊 Benchmark Highlights: RPyXL vs openpyxl, xlsxwriter, calamine & rust_xlsxwriter
 
 We tested 5 spreadsheet engines across 5 enterprise scenarios on a 500,000-cell realistic multi-type schema:
 

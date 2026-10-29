@@ -2,7 +2,7 @@
 
 ## Overview
 
-The PyXL benchmark suite measures performance and memory characteristics against `openpyxl` across equivalent workloads and environments.
+The RPyXL benchmark suite measures performance and memory characteristics against `openpyxl` across equivalent workloads and environments.
 
 ## Methodology Rules
 
@@ -19,8 +19,8 @@ The PyXL benchmark suite measures performance and memory characteristics against
 ## Metrics & Formulas
 
 - **Speedup**:
-  $$\text{speedup} = \frac{\text{openpyxl median time}}{\text{pyxl median time}}$$
+  $$\text{speedup} = \frac{\text{openpyxl median time}}{\text{rpyxl median time}}$$
 - **Memory Reduction**:
-  $$\text{reduction (\%)} = \left(1 - \frac{\text{pyxl peak RSS}}{\text{openpyxl peak RSS}}\right) \times 100$$
+  $$\text{reduction (\%)} = \left(1 - \frac{\text{rpyxl peak RSS}}{\text{openpyxl peak RSS}}\right) \times 100$$
 - **Throughput**:
   $$\text{throughput} = \frac{\text{total units}}{\text{median wall time}}$$

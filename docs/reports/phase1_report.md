@@ -1,6 +1,6 @@
 # Phase 1 Implementation and Benchmark Report
 
-**Project**: PyXL (A High-Performance, Rust-Powered Alternative to openpyxl)  
+**Project**: RPyXL (A High-Performance, Rust-Powered Alternative to openpyxl)
 **Phase**: Phase 1 — Project Foundation and Rust Core  
 **Date**: October 20, 2026  
 **Status**: **PASS (100% Quality Gate Satisfied)**  
@@ -10,7 +10,7 @@
 
 ## 1. Executive Summary
 
-Phase 1 establishes the production-grade foundation of **PyXL**, implementing pure Rust in-memory workbook management, 1-based sparse cell coordinate storage, two-way reactive cell mutations, deterministic worksheet ordering, and PyO3 0.22 extension bindings that mirror openpyxl's public API.
+Phase 1 establishes the production-grade foundation of **RPyXL**, implementing pure Rust in-memory workbook management, 1-based sparse cell coordinate storage, two-way reactive cell mutations, deterministic worksheet ordering, and PyO3 0.22 extension bindings that mirror openpyxl's public API.
 
 In addition to achieving 100% test pass rates across both Rust unit tests and side-by-side openpyxl compatibility tests, Phase 1 performance benchmarks demonstrate:
 - **Up to 1,675× faster workbook creation** than openpyxl.
@@ -23,7 +23,7 @@ In addition to achieving 100% test pass rates across both Rust unit tests and si
 
 ## 2. Features Implemented
 
-### Rust Core (`crates/pyxl-core`)
+### Rust Core (`crates/rpyxl-core`)
 - **Workbook Data Structure**:
   - Thread-safe storage with deterministic worksheet ordering.
   - Active sheet index tracking, default `"Sheet"` on creation.
@@ -39,13 +39,13 @@ In addition to achieving 100% test pass rates across both Rust unit tests and si
   - Explicit cell value types: `Empty`, `String`, `Int(i64)`, `Float(f64)`, `Bool(bool)`, `DateTime(String)`, `Formula(String)`.
   - openpyxl data type mapping: `'s'`, `'n'`, `'b'`, `'f'`, `'d'`.
 
-### PyO3 Extension Layer (`crates/pyxl-python` / `_core`)
+### PyO3 Extension Layer (`crates/rpyxl-python` / `_core`)
 - `PyWorkbook`, `PyWorksheet`, `PyCell` pyclasses with thread-safe `Arc<RwLock<...>>` reference ownership.
 - Direct value extraction in bulk iteration without wrapper overhead.
 - Exact openpyxl repr formatting: `<Cell 'Sheet'.A1>`, `<Worksheet "Sheet">`.
-- Exception mapping: Rust `PyxlError` $\to$ Python `KeyError`, `ValueError`, `IndexError`.
+- Exception mapping: Rust `RpyxlError` $\to$ Python `KeyError`, `ValueError`, `IndexError`.
 
-### Public Python Package (`python/pyxl`)
+### Public Python Package (`python/rpyxl`)
 - Re-exports `Workbook`, `Worksheet`, `Cell`, `load_workbook` (Phase 2 stub).
 - PEP 561 compliance marker (`py.typed`).
 - Coordinate utilities (`get_column_letter`, `column_index_from_string`, `coordinate_to_tuple`).
@@ -54,7 +54,7 @@ In addition to achieving 100% test pass rates across both Rust unit tests and si
 
 ## 3. Testing and Verification Results
 
-All tests were executed inside the containerized Docker environment (`pyxl-test:latest`):
+All tests were executed inside the containerized Docker environment (`rpyxl-test:latest`):
 
 | Test Suite | Total Tests | Passed | Failed | Skipped | Duration |
 |---|---|---|---|---|---|
@@ -80,7 +80,7 @@ Conducted using `benchmarks/run_benchmarks.py` with 7 measured repetitions per w
 
 ### Measured Metrics
 
-| Operation | Dataset | openpyxl Time | PyXL Time | Speedup | openpyxl Peak RSS | PyXL Peak RSS | Memory Reduction | PyXL Throughput |
+| Operation | Dataset | openpyxl Time | RPyXL Time | Speedup | openpyxl Peak RSS | RPyXL Peak RSS | Memory Reduction | RPyXL Throughput |
 |---|---|---|---|---|---|---|---|---|
 | **Workbook Creation** | 200 workbooks | 0.0512 s | 0.00003 s | **1,675.3×** | 47.9 MB | 42.4 MB | **11.6%** | 6.5M workbooks/s |
 | **Cell Assignment** | 1,000 × 10 (10,000 cells) | 0.0083 s | 0.0033 s | **2.54×** | 54.4 MB | 51.9 MB | **4.6%** | 3.06M cells/s |
@@ -104,8 +104,8 @@ Conducted using `benchmarks/run_benchmarks.py` with 7 measured repetitions per w
 ## 5. Performance Insights & Architectural Learnings
 
 1. **Massive Bulk Speedups**:
-   - In row appending and bulk row iteration, PyXL delivers **4.2× to 7.7× speedups** because sparse cells are created in cache-friendly Rust memory with preallocated buffers.
-   - Workbook creation is over **1,600× faster** because PyXL does not construct elaborate Python styling and theme dictionaries on startup.
+   - In row appending and bulk row iteration, RPyXL delivers **4.2× to 7.7× speedups** because sparse cells are created in cache-friendly Rust memory with preallocated buffers.
+   - Workbook creation is over **1,600× faster** because RPyXL does not construct elaborate Python styling and theme dictionaries on startup.
 2. **PyO3 Boundary Dynamics in Single-Cell Lookup**:
    - In `Random Cell Access` (`ws.cell(r, c).value`), openpyxl is ~1.5× faster because each single cell access crosses the PyO3 boundary twice (instantiating a temporary `PyCell` wrapper and then resolving `.value`).
    - *Phase 4/5 Optimization Target*: Add direct-access methods (e.g. `ws.get_value(r, c)`) and cell reference pooling to eliminate wrapper allocation overhead.

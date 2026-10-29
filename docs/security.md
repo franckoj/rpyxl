@@ -1,20 +1,20 @@
-# PyXL Security Architecture & Threat Model
+# RPyXL Security Architecture & Threat Model
 
-This document outlines PyXL's defensive architecture against untrusted spreadsheets, malicious file formats, and resource exhaustion vectors.
+This document outlines RPyXL's defensive architecture against untrusted spreadsheets, malicious file formats, and resource exhaustion vectors.
 
 ---
 
 ## 1. Threat Vectors & Defenses
 
-Spreadsheet processing engines are frequent targets of malicious payloads because Excel files are complex container formats (`.xlsx` is a ZIP package containing XML streams and binary assets). PyXL implements multi-layered protections in its Rust core.
+Spreadsheet processing engines are frequent targets of malicious payloads because Excel files are complex container formats (`.xlsx` is a ZIP package containing XML streams and binary assets). RPyXL implements multi-layered protections in its Rust core.
 
 ### 1.1 ZIP Bomb & Decompression Attacks
 
 #### Threat
 A malicious actor crafts a highly compressed file (e.g. 10 KB on disk that expands into 100 GB in memory upon decompression), leading to denial-of-service (DoS) via RAM or disk space exhaustion.
 
-#### PyXL Defenses
-Before decompressing any file entries, PyXL's `validate_zip_archive_security` inspects the ZIP central directory headers:
+#### RPyXL Defenses
+Before decompressing any file entries, RPyXL's `validate_zip_archive_security` inspects the ZIP central directory headers:
 1. **Maximum Uncompressed Entry Limit**:
    - Limit: `512 MB` per entry (`MAX_UNCOMPRESSED_FILE_SIZE`).
    - Any XML stream declaring an uncompressed size > 512 MB is rejected immediately.
@@ -35,10 +35,10 @@ Before decompressing any file entries, PyXL's `validate_zip_archive_security` in
 #### Threat
 XML parsers can be tricked into expanding recursive entities (`<!ENTITY lol "lol"><!ENTITY lol1 "&lol;&lol;">...`) or fetching external network resources (`<!ENTITY xxe SYSTEM "http://malicious.com/secret">`).
 
-#### PyXL Defenses
+#### RPyXL Defenses
 1. **DTD / DOCTYPE Strict Rejection**:
    - Standard ECMA-376 OOXML parts strictly forbid DTD / `<!DOCTYPE>` declarations.
-   - PyXL's `quick-xml` reader explicitly checks for `Event::DocType(_)`. Encountering any DOCTYPE declaration immediately halts parsing with `XmlSecurityViolation("DTD / DOCTYPE declaration is forbidden in XLSX XML streams")`.
+   - RPyXL's `quick-xml` reader explicitly checks for `Event::DocType(_)`. Encountering any DOCTYPE declaration immediately halts parsing with `XmlSecurityViolation("DTD / DOCTYPE declaration is forbidden in XLSX XML streams")`.
    - External entity resolution (XXE) is completely eliminated because DTD processing is disabled.
 2. **Memory Bounded Strings**:
    - Shared strings tables are capped at `10,000,000` entries to prevent unbounded heap allocation from malformed `<sst>` tags.
@@ -50,9 +50,9 @@ XML parsers can be tricked into expanding recursive entities (`<!ENTITY lol "lol
 #### Threat
 C/C++ Excel engines frequently suffer from use-after-free, buffer overflows, or out-of-bounds pointer writes when traversing nested structures.
 
-#### PyXL Defenses
+#### RPyXL Defenses
 1. **100% Memory-Safe Rust**:
-   - PyXL's workbook model, cell store, and XML serializers are written in safe Rust.
+   - RPyXL's workbook model, cell store, and XML serializers are written in safe Rust.
    - Workbooks, worksheets, and cells maintain thread-safe, reference-counted ownership (`Arc<RwLock<...>>`). If a worksheet or cell reference is retained in Python while the workbook is closed, memory remains valid and isolated without dangling pointers.
 2. **Excel Grid Boundary Enforcement**:
    - Row indices are strictly validated against `1 <= row <= 1,048,576`.
@@ -66,7 +66,7 @@ C/C++ Excel engines frequently suffer from use-after-free, buffer overflows, or 
 #### Threat
 Malicious sheet names or relationship targets attempting path traversal (`../../etc/passwd` or control characters).
 
-#### PyXL Defenses
+#### RPyXL Defenses
 1. **Sheet Title Whitelisting**:
    - Rejects forbidden Excel characters (`\ / ? * : [ ]`).
    - Enforces max 31 character length.

@@ -1,6 +1,6 @@
 """Integration test validating Phase 1 objective flow."""
 
-from pyxl import Workbook
+from rpyxl import Workbook
 
 
 def test_phase1_master_flow():

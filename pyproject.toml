@@ -4,10 +4,10 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "pyxl"
+name = "rpyxl"
 version = "0.1.0"
 description = "A high-performance, Rust-powered alternative to openpyxl"
-authors = [{ name = "PyXL Contributors" }]
+authors = [{ name = "RPyXL Contributors" }]
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.9"
@@ -60,8 +60,8 @@ dev = [
 ]
 
 [tool.maturin]
-manifest-path = "crates/pyxl-python/Cargo.toml"
-module-name = "pyxl._core"
+manifest-path = "crates/rpyxl-python/Cargo.toml"
+module-name = "rpyxl._core"
 python-source = "python"
 features = ["pyo3/extension-module"]
 

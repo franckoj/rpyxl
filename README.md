@@ -1,20 +1,20 @@
-# PyXL: A High-Performance, Rust-Powered Alternative to openpyxl
+# RPyXL: A High-Performance, Rust-Powered Alternative to openpyxl
 
 [![CI](https://github.com/franckoj/pyxl/actions/workflows/ci.yml/badge.svg)](https://github.com/franckoj/pyxl/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
-[![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/pyxl/)
+[![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/rpyxl/)
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org/)
 [![ABI3](https://img.shields.io/badge/wheels-ABI3%20Universal-green.svg)](https://github.com/franckoj/pyxl)
 
-PyXL is a high-performance Python spreadsheet library providing **drop-in compatibility with [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)**, backed by a memory-safe, multi-threaded Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
+RPyXL is a high-performance Python spreadsheet library providing **drop-in compatibility with [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)**, backed by a memory-safe, multi-threaded Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
 
 ---
 
 ## Performance Highlights
 
-PyXL provides speedups of **4.7× to 8.7×** across common spreadsheet workflows with peak throughput exceeding **1.68 million cells/second**:
+RPyXL provides speedups of **4.7× to 8.7×** across common spreadsheet workflows with peak throughput exceeding **1.68 million cells/second**:
 
-| Scale | Dataset | Operation | openpyxl | PyXL | Speedup | PyXL Throughput |
+| Scale | Dataset | Operation | openpyxl | RPyXL | Speedup | RPyXL Throughput |
 |---|---|---|---|---|---|---|
 | **Small** | 1,000 cells (100r × 10c) | Standard Save | 0.0093s | **0.0020s** | **4.71× faster** | 505,082 cells/s |
 | | | Streaming Write-Only | 0.0130s | **0.0022s** | **5.89× faster** | 452,753 cells/s |
@@ -31,7 +31,7 @@ PyXL provides speedups of **4.7× to 8.7×** across common spreadsheet workflows
 | | | Standard Load | 2.7133s | **0.3109s** | **8.73× faster** | 1,608,234 cells/s |
 | | | Streaming Read-Only | 1.6987s | **0.3312s** | **5.13× faster** | 1,509,715 cells/s |
 
-*RAM Savings on 500k Cells: PyXL uses **225 MB** vs openpyxl's **373 MB** (148 MB less RAM).*
+*RAM Savings on 500k Cells: RPyXL uses **225 MB** vs openpyxl's **373 MB** (148 MB less RAM).*
 
 ---
 
@@ -44,7 +44,7 @@ For existing projects using `openpyxl`, you can immediately replace the import:
 import openpyxl
 
 # After
-import pyxl as openpyxl
+import rpyxl as openpyxl
 
 # Everything else remains identical!
 wb = openpyxl.load_workbook("large_financials.xlsx", data_only=True)
@@ -60,9 +60,9 @@ See the full [Migration Guide](docs/migration_guide.md) for details.
 
 ### 1. In-Memory Workbook Writing
 ```python
-import pyxl
+import rpyxl
 
-wb = pyxl.Workbook()
+wb = rpyxl.Workbook()
 ws = wb.active
 ws.title = "Sales"
 
@@ -82,10 +82,10 @@ wb.save("sales_report.xlsx")
 Ideal for multi-million cell database dumps with constant $O(1)$ memory consumption:
 
 ```python
-import pyxl
+import rpyxl
 from datetime import datetime
 
-wb = pyxl.Workbook(write_only=True)
+wb = rpyxl.Workbook(write_only=True)
 ws = wb.create_sheet("Transactions")
 
 ws.append(["Transaction_ID", "Timestamp", "Amount", "Verified"])
@@ -100,9 +100,9 @@ wb.save("transactions.xlsx")
 Iterates rows on-the-fly with a 550× faster time-to-first-row:
 
 ```python
-import pyxl
+import rpyxl
 
-with pyxl.load_workbook("transactions.xlsx", read_only=True) as wb:
+with rpyxl.load_workbook("transactions.xlsx", read_only=True) as wb:
     ws = wb.active
     for row in ws.iter_rows(values_only=True):
         tx_id, ts, amount, verified = row
@@ -127,14 +127,14 @@ rows_1_5 = ws[1:5]    # 2D tuple of row tuples
 
 ### From Pre-Built Wheels (ABI3)
 ```bash
-pip install pyxl
+pip install rpyxl
 ```
 *Supports Python 3.9, 3.10, 3.11, 3.12, 3.13 on Linux, macOS (Apple Silicon & Intel), and Windows.*
 
 ### From Source
 ```bash
 git clone https://github.com/franckoj/pyxl.git
-cd pyxl
+cd rpyxl
 pip install maturin
 maturin develop --release
 ```
@@ -146,7 +146,7 @@ maturin develop --release
 - [Release Changelog](CHANGELOG.md): Complete release history and v0.1.0 release notes.
 - [API Reference Manual](docs/api_reference.md): Detailed signatures and parameter reference.
 - [openpyxl Migration Guide](docs/migration_guide.md): Drop-in patterns, edge cases, and best practices.
-- [API Compatibility Matrix](docs/compatibility_matrix.md): Exhaustive openpyxl vs PyXL feature matrix.
+- [API Compatibility Matrix](docs/compatibility_matrix.md): Exhaustive openpyxl vs RPyXL feature matrix.
 - [Development Changelog](docs/development_progress.md): Chronological engineering milestones.
 - [Security Architecture & Threat Model](docs/security.md): Hardening against ZIP bombs, XXE, and malformed files.
 - [Phase 1 Report](docs/reports/phase1_report.md): In-Memory Core & PyO3 Bindings.
@@ -167,20 +167,20 @@ The entire test suite is containerized for deterministic reproduction:
 
 ```bash
 # Build test container
-docker build -t pyxl-test .
+docker build -t rpyxl-test .
 
 # Run Rust unit and integration tests (21 passed)
-docker run --rm -v $(pwd):/workspace pyxl-test cargo test --workspace
+docker run --rm -v $(pwd):/workspace rpyxl-test cargo test --workspace
 
 # Run formatting & Clippy linter
-docker run --rm -v $(pwd):/workspace pyxl-test cargo fmt --all -- --check
-docker run --rm -v $(pwd):/workspace pyxl-test cargo clippy --workspace --all-targets -- -D warnings
+docker run --rm -v $(pwd):/workspace rpyxl-test cargo fmt --all -- --check
+docker run --rm -v $(pwd):/workspace rpyxl-test cargo clippy --workspace --all-targets -- -D warnings
 
 # Run Python compatibility, unit, and security tests (84 passed, 105 total)
-docker run --rm -v $(pwd):/workspace pyxl-test bash -c "maturin develop && pytest tests/ -v"
+docker run --rm -v $(pwd):/workspace rpyxl-test bash -c "maturin develop && pytest tests/ -v"
 
 # Run multi-scale benchmarks (1k, 10k, 100k, 500k cells)
-docker run --rm -v $(pwd):/workspace pyxl-test python benchmarks/run_multiscale.py
+docker run --rm -v $(pwd):/workspace rpyxl-test python benchmarks/run_multiscale.py
 ```
 
 ---
@@ -189,18 +189,18 @@ docker run --rm -v $(pwd):/workspace pyxl-test python benchmarks/run_multiscale.
 
 ```mermaid
 graph TD
-    A[Python Application] -->|Import pyxl| B[Python Compatibility Layer]
-    B --> C[pyxl._core PyO3 Bindings]
-    C --> D[pyxl-core: Sparse BTreeMap Cell Store]
-    C --> E[pyxl-ooxml: Serializer & Calamine Reader]
+    A[Python Application] -->|Import rpyxl| B[Python Compatibility Layer]
+    B --> C[rpyxl._core PyO3 Bindings]
+    C --> D[rpyxl-core: Sparse BTreeMap Cell Store]
+    C --> E[rpyxl-ooxml: Serializer & Calamine Reader]
     E --> F[Direct ZIP & XML Streaming]
     D -->|Rayon Multi-Threading| E
 ```
 
-- **`pyxl-core`**: Pure Rust workbook and sparse cell coordinate model (`BTreeMap<(row, col), Cell>`).
-- **`pyxl-ooxml`**: High-speed ECMA-376 XML parser/generator with `itoa`, `ryu`, and `rayon`.
-- **`pyxl-python`**: Thread-safe PyO3 bindings with ABI3 multi-Python version support.
-- **`python/pyxl`**: Python public layer replicating openpyxl classes, styles, and exceptions.
+- **`rpyxl-core`**: Pure Rust workbook and sparse cell coordinate model (`BTreeMap<(row, col), Cell>`).
+- **`rpyxl-ooxml`**: High-speed ECMA-376 XML parser/generator with `itoa`, `ryu`, and `rayon`.
+- **`rpyxl-python`**: Thread-safe PyO3 bindings with ABI3 multi-Python version support.
+- **`python/rpyxl`**: Python public layer replicating openpyxl classes, styles, and exceptions.
 
 ---
 

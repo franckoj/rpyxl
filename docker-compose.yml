@@ -3,7 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: pyxl-test:latest
+    image: rpyxl-test:latest
     volumes:
       - .:/workspace
       - cargo-cache:/usr/local/cargo/registry

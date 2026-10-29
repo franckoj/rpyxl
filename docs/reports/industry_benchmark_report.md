@@ -12,16 +12,16 @@ This study presents a rigorous, multi-dimensional performance evaluation compari
 
 1. **`openpyxl` (v3.1.5)**: Pure Python industry-standard spreadsheet DOM.
 2. **`xlsxwriter` (v3.2.9)**: Pure Python streaming writer.
-3. **`pyxl` (v0.1.0)**: High-performance hybrid engine (Pure Rust core + PyO3 + openpyxl-compatible API).
+3. **`rpyxl` (v0.1.0)**: High-performance hybrid engine (Pure Rust core + PyO3 + openpyxl-compatible API).
 4. **`calamine` (v0.9.0 / tafia)**: Premier pure Rust spreadsheet deserializer (via `python-calamine`).
 5. **`rust_xlsxwriter` (v0.100.0 / jmcnamara)**: Premier pure Rust spreadsheet serializer.
 
 ### Key Headline Findings
 
-- **Export Throughput**: `pyxl` streaming write-only serializes **1.65 million cells/second** on 500k rows—outperforming `openpyxl` by **6.9×**, outperforming Python `xlsxwriter` by **4.1×**, and operating within **~22%** of bare-metal `rust_xlsxwriter` (2.13M cells/s).
-- **Ingestion Throughput**: `pyxl` standard load achieves **1.67 million cells/second**—outperforming `openpyxl` by **9.2×** and operating within **23%** of pure `calamine` while providing a fully mutable openpyxl object model (`Workbook`, `Worksheet`, `Cell`).
-- **Transactional Mutation (Read-Modify-Write)**: On a 100k-cell corporate spreadsheet, `pyxl` completes a full scan, in-place cell recalculation, and re-serialization in **0.1150s** vs openpyxl's **0.9581s** (**8.33× faster**).
-- **Multi-Sheet Parallelism**: Across a 5-sheet, 1,000,000-cell workbook, `pyxl` leverages Rayon multi-threading to finish in **0.9797s** (>1M cells/s), delivering a **5.71× speedup** over GIL-throttled openpyxl (5.5940s).
+- **Export Throughput**: `rpyxl` streaming write-only serializes **1.65 million cells/second** on 500k rows—outperforming `openpyxl` by **6.9×**, outperforming Python `xlsxwriter` by **4.1×**, and operating within **~22%** of bare-metal `rust_xlsxwriter` (2.13M cells/s).
+- **Ingestion Throughput**: `rpyxl` standard load achieves **1.67 million cells/second**—outperforming `openpyxl` by **9.2×** and operating within **23%** of pure `calamine` while providing a fully mutable openpyxl object model (`Workbook`, `Worksheet`, `Cell`).
+- **Transactional Mutation (Read-Modify-Write)**: On a 100k-cell corporate spreadsheet, `rpyxl` completes a full scan, in-place cell recalculation, and re-serialization in **0.1150s** vs openpyxl's **0.9581s** (**8.33× faster**).
+- **Multi-Sheet Parallelism**: Across a 5-sheet, 1,000,000-cell workbook, `rpyxl` leverages Rayon multi-threading to finish in **0.9797s** (>1M cells/s), delivering a **5.71× speedup** over GIL-throttled openpyxl (5.5940s).
 
 ---
 
@@ -45,7 +45,7 @@ To reflect real-world enterprise workloads rather than trivial integer matrices,
 
 Tested by generating spreadsheets row-by-row into compressed `.xlsx` archives:
 
-| Dataset Scale | Cell Count | `openpyxl` Stream | `xlsxwriter` (Py) | `pyxl` Stream (Rust Core) | `rust_xlsxwriter` (Pure Rust) | PyXL vs openpyxl | PyXL vs xlsxwriter |
+| Dataset Scale | Cell Count | `openpyxl` Stream | `xlsxwriter` (Py) | `rpyxl` Stream (Rust Core) | `rust_xlsxwriter` (Pure Rust) | RPyXL vs openpyxl | RPyXL vs xlsxwriter |
 |---|---|---|---|---|---|---|---|
 | **Small** (100r × 10c) | 1,000 | 0.0060s (166k c/s) | 0.0039s (256k c/s) | **0.0009s (1.09M c/s)** | 0.0017s (590k c/s) | **6.5× faster** | **4.3× faster** |
 | **Medium** (1kr × 10c) | 10,000 | 0.0440s (227k c/s) | 0.0223s (449k c/s) | **0.0063s (1.59M c/s)** | 0.0051s (1.98M c/s) | **7.0× faster** | **3.5× faster** |
@@ -60,7 +60,7 @@ Tested by generating spreadsheets row-by-row into compressed `.xlsx` archives:
 
 Tested by loading `.xlsx` files from disk and iterating through all cell values:
 
-| Dataset Scale | Cell Count | `openpyxl` Standard | `pyxl` Standard | `calamine` (Pure Rust) | PyXL Speedup vs openpyxl | PyXL Overhead vs calamine |
+| Dataset Scale | Cell Count | `openpyxl` Standard | `rpyxl` Standard | `calamine` (Pure Rust) | RPyXL Speedup vs openpyxl | RPyXL Overhead vs calamine |
 |---|---|---|---|---|---|---|
 | **Small** (1,000 cells) | 1,000 | 0.0058s (172k c/s) | **0.0010s (962k c/s)** | **0.0008s (1.20M c/s)** | **5.6× faster** | +25% |
 | **Medium** (10,000 cells) | 10,000 | 0.0443s (226k c/s) | **0.0063s (1.60M c/s)** | **0.0051s (1.95M c/s)** | **7.1× faster** | +22% |
@@ -69,8 +69,8 @@ Tested by loading `.xlsx` files from disk and iterating through all cell values:
 
 ### Streaming Time-To-First-Row (TTFR)
 In pipeline architectures where downstream processing begins as soon as the first record is yielded:
-- **Large Dataset (100,000 cells)**: `openpyxl`: 2.90ms vs `pyxl`: **0.96ms** (**3.0× faster**)
-- **Stress Dataset (500,000 cells)**: `openpyxl`: 3.90ms vs `pyxl`: **0.91ms** (**4.3× faster**)
+- **Large Dataset (100,000 cells)**: `openpyxl`: 2.90ms vs `rpyxl`: **0.96ms** (**3.0× faster**)
+- **Stress Dataset (500,000 cells)**: `openpyxl`: 3.90ms vs `rpyxl`: **0.91ms** (**4.3× faster**)
 
 ---
 
@@ -79,8 +79,8 @@ In pipeline architectures where downstream processing begins as soon as the firs
 A standard financial workflow: open a 100k-cell spreadsheet, iterate rows, calculate adjustments on numeric fields, append a totals row, and save back to disk.
 
 - **`openpyxl` Execution Time**: **0.9581s**
-- **`pyxl` Execution Time**: **0.1150s**
-- **Speedup**: **8.33× faster with PyXL**
+- **`rpyxl` Execution Time**: **0.1150s**
+- **Speedup**: **8.33× faster with RPyXL**
 
 *`calamine`, `xlsxwriter`, and `rust_xlsxwriter` cannot execute this workflow because they lack either read or write capabilities.*
 
@@ -91,16 +91,16 @@ A standard financial workflow: open a 100k-cell spreadsheet, iterate rows, calcu
 Workbooks containing multiple departmental tabs (5 sheets × 20,000 rows × 10 cols = 1,000,000 cells):
 
 - **`openpyxl` (Single-Threaded / GIL bound)**: **5.5940s** (178,763 cells/s)
-- **`pyxl` (Rayon Multi-Sheet Parallelism)**: **0.9797s** (**1,020,737 cells/s**)
+- **`rpyxl` (Rayon Multi-Sheet Parallelism)**: **0.9797s** (**1,020,737 cells/s**)
 - **Performance Advantage**: **5.71× faster**
 
-PyXL breaks through the Python GIL bottleneck by serializing distinct XML sheet parts concurrently on background Rayon threads while maintaining thread safety.
+RPyXL breaks through the Python GIL bottleneck by serializing distinct XML sheet parts concurrently on background Rayon threads while maintaining thread safety.
 
 ---
 
 ## 7. Scenario 5: Cross-Engine Precision & Round-Trip Fidelity
 
-To ensure production safety, workbooks produced by `pyxl` were verified across `openpyxl` and `calamine`:
+To ensure production safety, workbooks produced by `rpyxl` were verified across `openpyxl` and `calamine`:
 
 | Verification Check | Target Data | Result | Status |
 |---|---|---|---|
@@ -113,7 +113,7 @@ To ensure production safety, workbooks produced by `pyxl` were verified across `
 
 ## 8. Comprehensive Architecture Comparison
 
-| Feature / Metric | `openpyxl` | `xlsxwriter` (Py) | `pyxl` (Hybrid) | `calamine` | `rust_xlsxwriter` |
+| Feature / Metric | `openpyxl` | `xlsxwriter` (Py) | `rpyxl` (Hybrid) | `calamine` | `rust_xlsxwriter` |
 |---|---|---|---|---|---|
 | **Language** | Pure Python | Pure Python | **Rust + Python** | Pure Rust | Pure Rust |
 | **Drop-in openpyxl API** | Native | ❌ Proprietary | **100% Drop-in** | ❌ None | ❌ None |
@@ -129,6 +129,6 @@ To ensure production safety, workbooks produced by `pyxl` were verified across `
 
 ## 9. Conclusion & Enterprise Recommendation
 
-1. **For Pure Python codebases needing faster write-only exports**: `xlsxwriter` is ~1.7× faster than openpyxl, but `pyxl` is **4.1× faster** than `xlsxwriter` and requires zero API rewrites.
+1. **For Pure Python codebases needing faster write-only exports**: `xlsxwriter` is ~1.7× faster than openpyxl, but `rpyxl` is **4.1× faster** than `xlsxwriter` and requires zero API rewrites.
 2. **For Pure Rust applications**: Use `calamine` for reading and `rust_xlsxwriter` for writing.
-3. **For Python enterprise workflows**: **`pyxl` represents the state-of-the-art solution**. It eliminates the performance bottleneck of pure Python while maintaining complete compatibility with existing `openpyxl` code, delivering **Calamine-class reading**, **`rust_xlsxwriter`-class writing**, and **true multi-core scaling**.
+3. **For Python enterprise workflows**: **`rpyxl` represents the state-of-the-art solution**. It eliminates the performance bottleneck of pure Python while maintaining complete compatibility with existing `openpyxl` code, delivering **Calamine-class reading**, **`rust_xlsxwriter`-class writing**, and **true multi-core scaling**.

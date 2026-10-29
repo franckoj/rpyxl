@@ -1,4 +1,4 @@
-"""Compatibility tests verifying round-trip fidelity between PyXL, openpyxl, and calamine."""
+"""Compatibility tests verifying round-trip fidelity between RPyXL, openpyxl, and calamine."""
 
 import datetime
 from pathlib import Path
@@ -6,15 +6,15 @@ import pytest
 import openpyxl
 from python_calamine import CalamineWorkbook
 
-import pyxl
+import rpyxl
 
 
 class TestWriterCompatibility:
-    def test_pyxl_standard_write_openpyxl_read(self, tmp_path):
-        file_path = tmp_path / "pyxl_to_openpyxl.xlsx"
+    def test_rpyxl_standard_write_openpyxl_read(self, tmp_path):
+        file_path = tmp_path / "rpyxl_to_openpyxl.xlsx"
 
-        # Create workbook with pyxl
-        wb = pyxl.Workbook()
+        # Create workbook with rpyxl
+        wb = rpyxl.Workbook()
         ws = wb.active
         ws.title = "CompatTest"
 
@@ -48,10 +48,10 @@ class TestWriterCompatibility:
         assert ox_ws["B3"].value == "Bob & Co <Ltd>"
         assert ox_ws["B4"].value == "日本語 / 中文 / 🌟"
 
-    def test_pyxl_write_only_openpyxl_read(self, tmp_path):
-        file_path = tmp_path / "pyxl_wo_to_openpyxl.xlsx"
+    def test_rpyxl_write_only_openpyxl_read(self, tmp_path):
+        file_path = tmp_path / "rpyxl_wo_to_openpyxl.xlsx"
 
-        wb = pyxl.Workbook(write_only=True)
+        wb = rpyxl.Workbook(write_only=True)
         ws = wb.create_sheet("Streaming")
 
         rows_count = 1000
@@ -75,10 +75,10 @@ class TestWriterCompatibility:
 
         assert read_count == rows_count
 
-    def test_pyxl_write_calamine_read(self, tmp_path):
-        file_path = tmp_path / "pyxl_to_calamine.xlsx"
+    def test_rpyxl_write_calamine_read(self, tmp_path):
+        file_path = tmp_path / "rpyxl_to_calamine.xlsx"
 
-        wb = pyxl.Workbook()
+        wb = rpyxl.Workbook()
         ws = wb.active
         ws["A1"] = 100
         ws["B1"] = "Calamine Engine"
@@ -94,8 +94,8 @@ class TestWriterCompatibility:
         assert data[1][0] == 200.0
         assert data[1][1] == "Row 2"
 
-    def test_openpyxl_write_pyxl_read(self, tmp_path):
-        file_path = tmp_path / "openpyxl_to_pyxl.xlsx"
+    def test_openpyxl_write_rpyxl_read(self, tmp_path):
+        file_path = tmp_path / "openpyxl_to_rpyxl.xlsx"
 
         ox_wb = openpyxl.Workbook()
         ox_ws = ox_wb.active
@@ -106,16 +106,16 @@ class TestWriterCompatibility:
         ox_ws["D1"] = True
         ox_wb.save(file_path)
 
-        pyxl_wb = pyxl.load_workbook(file_path)
-        assert pyxl_wb.sheetnames == ["SourceData"]
-        p_ws = pyxl_wb["SourceData"]
+        rpyxl_wb = rpyxl.load_workbook(file_path)
+        assert rpyxl_wb.sheetnames == ["SourceData"]
+        p_ws = rpyxl_wb["SourceData"]
         assert p_ws["A1"].value == "Created by openpyxl"
         assert p_ws["B1"].value == 12345
         assert abs(p_ws["C1"].value - 45.67) < 1e-4
         assert p_ws["D1"].value is True
 
-    def test_openpyxl_write_only_to_pyxl_streaming_read(self, tmp_path):
-        file_path = tmp_path / "openpyxl_wo_to_pyxl.xlsx"
+    def test_openpyxl_write_only_to_rpyxl_streaming_read(self, tmp_path):
+        file_path = tmp_path / "openpyxl_wo_to_rpyxl.xlsx"
 
         ox_wb = openpyxl.Workbook(write_only=True)
         ox_ws = ox_wb.create_sheet("BatchData")
@@ -123,8 +123,8 @@ class TestWriterCompatibility:
             ox_ws.append([i, f"Batch-{i}"])
         ox_wb.save(file_path)
 
-        pyxl_wb = pyxl.load_workbook(file_path, read_only=True)
-        p_ws = pyxl_wb["BatchData"]
+        rpyxl_wb = rpyxl.load_workbook(file_path, read_only=True)
+        p_ws = rpyxl_wb["BatchData"]
         rows = list(p_ws.iter_rows(values_only=True))
         assert len(rows) == 100
         assert rows[0] == (1, "Batch-1")

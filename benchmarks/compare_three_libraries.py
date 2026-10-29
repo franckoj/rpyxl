@@ -4,7 +4,7 @@ import psutil
 import gc
 from tabulate import tabulate
 import openpyxl
-import pyxl
+import rpyxl
 import python_calamine
 
 def get_process_rss():
@@ -30,9 +30,9 @@ for label, path, cells in files:
     wb_ox.close()
     t_ox = time.perf_counter() - t0
 
-    # 2. pyxl standard load
+    # 2. rpyxl standard load
     t0 = time.perf_counter()
-    wb_px = pyxl.load_workbook(path, data_only=True)
+    wb_px = rpyxl.load_workbook(path, data_only=True)
     ws_px = wb_px.active
     rows_px = list(ws_px.iter_rows(values_only=True))
     wb_px.close()
@@ -54,11 +54,11 @@ for label, path, cells in files:
         "Dataset": label,
         "Cells": f"{cells:,}",
         "openpyxl (Python)": f"{t_ox:.4f}s",
-        "PyXL (Rust+PyO3)": f"{t_px:.4f}s",
+        "RPyXL (Rust+PyO3)": f"{t_px:.4f}s",
         "calamine (Pure Rust)": f"{t_cal:.4f}s",
-        "PyXL Speedup vs openpyxl": f"{speedup_px_vs_ox:.2f}x",
+        "RPyXL Speedup vs openpyxl": f"{speedup_px_vs_ox:.2f}x",
         "calamine Speedup vs openpyxl": f"{speedup_cal_vs_ox:.2f}x",
-        "PyXL overhead vs Calamine": f"{ratio_px_vs_cal:.2f}x",
+        "RPyXL overhead vs Calamine": f"{ratio_px_vs_cal:.2f}x",
     })
 
     # Time to First Row (TTFR) on Large & Stress
@@ -72,9 +72,9 @@ for label, path, cells in files:
         ttfr_ox = time.perf_counter() - t0
         wb_ro_ox.close()
 
-        # pyxl read_only TTFR
+        # rpyxl read_only TTFR
         t0 = time.perf_counter()
-        wb_ro_px = pyxl.load_workbook(path, read_only=True)
+        wb_ro_px = rpyxl.load_workbook(path, read_only=True)
         ws_ro_px = wb_ro_px.active
         gen_px = ws_ro_px.iter_rows(values_only=True)
         first_row_px = next(gen_px)
@@ -84,7 +84,7 @@ for label, path, cells in files:
         ttfr_results.append({
             "Dataset": label,
             "openpyxl TTFR": f"{ttfr_ox:.4f}s",
-            "PyXL TTFR": f"{ttfr_px*1000:.2f}ms",
+            "RPyXL TTFR": f"{ttfr_px*1000:.2f}ms",
             "TTFR Latency Advantage": f"{ttfr_ox/ttfr_px:.1f}x faster",
         })
 
@@ -94,7 +94,7 @@ print(tabulate(load_results, headers="keys", tablefmt="github"))
 print("\n=== TIME-TO-FIRST-ROW (STREAMING LATENCY) ===")
 print(tabulate(ttfr_results, headers="keys", tablefmt="github"))
 
-# 3. Writing Benchmarks (openpyxl vs xlsxwriter vs PyXL Standard vs PyXL Write-Only vs rust_xlsxwriter)
+# 3. Writing Benchmarks (openpyxl vs xlsxwriter vs RPyXL Standard vs RPyXL Write-Only vs rust_xlsxwriter)
 import subprocess
 import json
 
@@ -138,9 +138,9 @@ for label, _, cells in files:
     else:
         xw_str = "N/A"
 
-    # pyxl standard write
+    # rpyxl standard write
     t0 = time.perf_counter()
-    wb = pyxl.Workbook()
+    wb = rpyxl.Workbook()
     ws = wb.active
     for r in range(1, rows + 1):
         for c in range(1, cols + 1):
@@ -151,9 +151,9 @@ for label, _, cells in files:
     t_write_px = time.perf_counter() - t0
     if os.path.exists(out_px): os.remove(out_px)
 
-    # pyxl streaming write-only
+    # rpyxl streaming write-only
     t0 = time.perf_counter()
-    wb_wo = pyxl.Workbook(write_only=True)
+    wb_wo = rpyxl.Workbook(write_only=True)
     ws_wo = wb_wo.create_sheet()
     for r in range(rows):
         ws_wo.append([r * 10 + c for c in range(cols)])
@@ -183,8 +183,8 @@ for label, _, cells in files:
         "Cells": f"{cells:,}",
         "openpyxl": f"{t_write_ox:.4f}s",
         "xlsxwriter (Py)": xw_str,
-        "PyXL Std": f"{t_write_px:.4f}s ({speedup_px_std:.1f}x)",
-        "PyXL Write-Only": f"{t_write_wo:.4f}s ({speedup_px_wo:.1f}x)",
+        "RPyXL Std": f"{t_write_px:.4f}s ({speedup_px_std:.1f}x)",
+        "RPyXL Write-Only": f"{t_write_wo:.4f}s ({speedup_px_wo:.1f}x)",
         "rust_xlsxwriter (Rust)": rust_str,
         "calamine": "N/A (Read-Only)",
     })

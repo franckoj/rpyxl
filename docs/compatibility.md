@@ -1,10 +1,10 @@
 # Compatibility Matrix
 
-This document tracks API compatibility between openpyxl and PyXL.
+This document tracks API compatibility between openpyxl and RPyXL.
 
 ## Phase 1 Compatibility Status
 
-| API / Feature | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences / Notes |
+| API / Feature | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences / Notes |
 |---|---|---|---|---|---|
 | `Workbook()` | Creates in-memory workbook with default sheet | Matches | Supported | `test_workbook.py`, `test_openpyxl_compat.py` | None |
 | `wb.active` | Returns active worksheet; allows assignment | Matches | Supported | `test_workbook.py` | Supports int, title, or Worksheet object |

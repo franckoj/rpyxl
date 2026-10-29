@@ -6,8 +6,8 @@ import tempfile
 import zipfile
 import pytest
 
-import pyxl
-from pyxl.utils.exceptions import (
+import rpyxl
+from rpyxl.utils.exceptions import (
     InvalidFileException,
     SheetTitleException,
     OpenpyxlException,
@@ -32,7 +32,7 @@ def test_corrupted_truncated_zip():
 
     try:
         with pytest.raises((InvalidFileException, ValueError)):
-            pyxl.load_workbook(tmp.name)
+            rpyxl.load_workbook(tmp.name)
     finally:
         os.unlink(tmp.name)
 
@@ -46,7 +46,7 @@ def test_missing_workbook_xml():
 
     try:
         with pytest.raises((InvalidFileException, ValueError)):
-            pyxl.load_workbook(path)
+            rpyxl.load_workbook(path)
     finally:
         os.unlink(path)
 
@@ -64,7 +64,7 @@ def test_zip_bomb_high_compression_ratio_rejected():
 
     try:
         with pytest.raises((InvalidFileException, ValueError)) as excinfo:
-            pyxl.load_workbook(path)
+            rpyxl.load_workbook(path)
         assert "ZIP bomb" in str(excinfo.value) or "compression ratio" in str(excinfo.value)
     finally:
         os.unlink(path)
@@ -92,7 +92,7 @@ def test_xml_doctype_xxe_entity_injection_rejected():
 
     try:
         with pytest.raises((InvalidFileException, ValueError)) as excinfo:
-            pyxl.load_workbook(path)
+            rpyxl.load_workbook(path)
         assert "security violation" in str(excinfo.value) or "DOCTYPE" in str(excinfo.value)
     finally:
         os.unlink(path)
@@ -100,7 +100,7 @@ def test_xml_doctype_xxe_entity_injection_rejected():
 
 def test_excel_bounds_protection():
     """Verify row and column boundaries strictly conform to Excel limits."""
-    wb = pyxl.Workbook()
+    wb = rpyxl.Workbook()
     ws = wb.active
 
     # Row 0 and Col 0 are invalid
@@ -123,7 +123,7 @@ def test_excel_bounds_protection():
 
 def test_sheet_title_character_and_length_security():
     """Verify sheet titles cannot contain forbidden control/path chars or exceed 31 chars."""
-    wb = pyxl.Workbook()
+    wb = rpyxl.Workbook()
     ws = wb.active
 
     # Forbidden characters: \ / ? * : [ ]

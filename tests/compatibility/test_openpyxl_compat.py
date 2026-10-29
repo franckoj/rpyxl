@@ -1,25 +1,25 @@
-"""Compatibility test suite comparing openpyxl and PyXL behavior directly."""
+"""Compatibility test suite comparing openpyxl and RPyXL behavior directly."""
 
 import pytest
-import pyxl
+import rpyxl
 import openpyxl
 
 
 def test_compat_workbook_defaults():
-    pyxl_wb = pyxl.Workbook()
+    rpyxl_wb = rpyxl.Workbook()
     openpyxl_wb = openpyxl.Workbook()
 
-    assert pyxl_wb.sheetnames == openpyxl_wb.sheetnames
-    assert pyxl_wb.active.title == openpyxl_wb.active.title
-    assert len(pyxl_wb.worksheets) == len(openpyxl_wb.worksheets)
-    assert len(pyxl_wb.sheetnames) == len(openpyxl_wb.sheetnames)
+    assert rpyxl_wb.sheetnames == openpyxl_wb.sheetnames
+    assert rpyxl_wb.active.title == openpyxl_wb.active.title
+    assert len(rpyxl_wb.worksheets) == len(openpyxl_wb.worksheets)
+    assert len(rpyxl_wb.sheetnames) == len(openpyxl_wb.sheetnames)
 
-    pyxl_wb.close()
+    rpyxl_wb.close()
     openpyxl_wb.close()
 
 
 def test_compat_sheet_creation_and_removal():
-    p_wb = pyxl.Workbook()
+    p_wb = rpyxl.Workbook()
     o_wb = openpyxl.Workbook()
 
     p_ws1 = p_wb.create_sheet(title="Custom1")
@@ -44,7 +44,7 @@ def test_compat_sheet_creation_and_removal():
 
 
 def test_compat_cell_types_and_values():
-    p_wb = pyxl.Workbook()
+    p_wb = rpyxl.Workbook()
     o_wb = openpyxl.Workbook()
 
     p_ws = p_wb.active
@@ -76,7 +76,7 @@ def test_compat_cell_types_and_values():
 
 
 def test_compat_append_and_iteration():
-    p_wb = pyxl.Workbook()
+    p_wb = rpyxl.Workbook()
     o_wb = openpyxl.Workbook()
 
     p_ws = p_wb.active
@@ -108,7 +108,7 @@ def test_compat_append_and_iteration():
 
 
 def test_compat_exception_behavior():
-    p_wb = pyxl.Workbook()
+    p_wb = rpyxl.Workbook()
     o_wb = openpyxl.Workbook()
 
     # KeyError for missing worksheet

@@ -1,7 +1,7 @@
-"""Unit tests for PyXL Worksheet operations."""
+"""Unit tests for RPyXL Worksheet operations."""
 
 import pytest
-from pyxl import Workbook
+from rpyxl import Workbook
 
 
 def test_worksheet_title_and_renaming():

@@ -1,12 +1,12 @@
-# PyXL API Reference Manual
+# RPyXL API Reference Manual
 
-This document details the public API surface of PyXL (`pyxl`).
+This document details the public API surface of RPyXL (`rpyxl`).
 
 ---
 
 ## 1. Top-Level Functions
 
-### `pyxl.load_workbook(filename, read_only=False, data_only=False, keep_vba=False)`
+### `rpyxl.load_workbook(filename, read_only=False, data_only=False, keep_vba=False)`
 Loads an existing XLSX workbook from disk.
 
 - **Parameters**:
@@ -17,7 +17,7 @@ Loads an existing XLSX workbook from disk.
 - **Returns**: `Workbook` or `ReadOnlyWorkbook`.
 - **Raises**: `FileNotFoundError`, `InvalidFileException`, `ValueError`.
 
-### `pyxl.Workbook(write_only=False)`
+### `rpyxl.Workbook(write_only=False)`
 Instantiates a new workbook.
 
 - **Parameters**:
@@ -26,7 +26,7 @@ Instantiates a new workbook.
 
 ---
 
-## 2. `pyxl.Workbook` (Standard In-Memory)
+## 2. `rpyxl.Workbook` (Standard In-Memory)
 
 ### Properties
 - `active`: (*Worksheet*) Returns or sets the active worksheet. Can be assigned an integer index, title string, or `Worksheet` instance.
@@ -57,7 +57,7 @@ Instantiates a new workbook.
 
 ---
 
-## 3. `pyxl.Worksheet`
+## 3. `rpyxl.Worksheet`
 
 ### Properties
 - `title`: (*str*) Title of the sheet. Enforces length <= 31 chars and rejects forbidden characters (`\ / ? * : [ ]`).
@@ -91,7 +91,7 @@ Instantiates a new workbook.
 
 ---
 
-## 4. `pyxl.Cell`
+## 4. `rpyxl.Cell`
 
 ### Properties
 - `value`: (*Any*) Get or set cell value (`str`, `int`, `float`, `bool`, `date`, `datetime`, `None`).
@@ -110,13 +110,13 @@ Instantiates a new workbook.
 
 ## 5. Streaming Workbooks
 
-### `pyxl.Workbook(write_only=True)`
+### `rpyxl.Workbook(write_only=True)`
 - High-performance, streaming writer with constant $O(1)$ memory usage.
 - `ws = wb.create_sheet(title)`: Creates streaming sheet.
 - `ws.append(row)`: Flushes row directly to temporary XML buffer on disk.
 - `wb.save(filename)`: Finalizes archive.
 
-### `pyxl.load_workbook(filename, read_only=True)`
+### `rpyxl.load_workbook(filename, read_only=True)`
 - Lazy streaming reader powered by `calamine`.
 - `ws.iter_rows(values_only=True)` yields rows on-the-fly without accumulating cells in RAM.
 
@@ -124,21 +124,21 @@ Instantiates a new workbook.
 
 ## 6. Utilities & Exceptions
 
-### `pyxl.utils`
+### `rpyxl.utils`
 - `get_column_letter(idx: int) -> str`
 - `column_index_from_string(col: str) -> int`
 - `coordinate_to_tuple(coord: str) -> tuple[int, int]`
 - `range_boundaries(range_str: str) -> tuple[int, int, int, int]`
 - `quote_sheetname(sheetname: str) -> str`
 
-### `pyxl.utils.exceptions`
+### `rpyxl.utils.exceptions`
 - `OpenpyxlException` (base)
 - `InvalidFileException`
 - `SheetTitleException`
 - `CellCoordinatesException`
 - `NamedRangeException`
 
-### `pyxl.styles`
+### `rpyxl.styles`
 - `Font(name, size, bold, italic, color)`
 - `PatternFill(fill_type, start_color, end_color)`
 - `Alignment(horizontal, vertical, wrap_text)`

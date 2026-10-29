@@ -3,15 +3,15 @@
 **Date**: 2026-10-20  
 **Phase**: 7 of 8  
 **Status**: Completed  
-**Artifact**: PyXL v0.1.0 Security Hardening & Malicious Archive Defenses  
+**Artifact**: RPyXL v0.1.0 Security Hardening & Malicious Archive Defenses
 
 ---
 
 ## 1. Executive Summary
 
-Phase 7 hardens PyXL against untrusted, corrupted, and adversarially crafted spreadsheet files. Spreadsheets are complex container archives (`.xlsx` packages containing compressed XML streams and relationships) that can be weaponized using decompression bombs, XML entity expansion (Billion Laughs), external entity resolution (XXE), and boundary violations.
+Phase 7 hardens RPyXL against untrusted, corrupted, and adversarially crafted spreadsheet files. Spreadsheets are complex container archives (`.xlsx` packages containing compressed XML streams and relationships) that can be weaponized using decompression bombs, XML entity expansion (Billion Laughs), external entity resolution (XXE), and boundary violations.
 
-PyXL now incorporates multi-tiered defenses directly in its Rust core and Python boundary layers:
+RPyXL now incorporates multi-tiered defenses directly in its Rust core and Python boundary layers:
 1. **ZIP Bomb & Decompression Bomb Defenses**:
    - Rejects archives where any individual XML entry exceeds `512 MB`.
    - Enforces a cumulative uncompressed size threshold of `1,024 MB` across the archive.

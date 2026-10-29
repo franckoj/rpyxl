@@ -1,27 +1,27 @@
-# PyXL API Compatibility Matrix (vs openpyxl)
+# RPyXL API Compatibility Matrix (vs openpyxl)
 
-This document tracks API compatibility between `openpyxl` (v3.1+) and `PyXL` (v0.1.0).
+This document tracks API compatibility between `openpyxl` (v3.1+) and `RPyXL` (v0.1.0).
 
 Status Definitions:
 - **Supported**: Full behavioural parity with openpyxl, verified by unit and cross-library tests.
 - **Partial**: Core functionality matches; advanced edge cases or metadata may differ.
 - **Planned**: Targeted for subsequent phases (v0.2+).
-- **Not Planned**: Explicitly out of scope for PyXL v0.1 (e.g., VBA macros, chart rendering).
+- **Not Planned**: Explicitly out of scope for RPyXL v0.1 (e.g., VBA macros, chart rendering).
 
 ---
 
 ## 1. Top-Level Functions
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `load_workbook(filename, read_only=False, data_only=False, keep_vba=False)` | Opens an XLSX file into a Workbook; supports streaming read-only and evaluating formulas to cached values | Reads XLSX via Rust calamine engine; full support for standard & streaming `read_only=True` mode, `data_only=True` | **Supported** | `test_reader.py`, `test_reader_compat.py` | `keep_vba` accepted as parameter but VBA macros not executed | v0.1.0 |
 | `Workbook(write_only=False)` | Instantiates a new in-memory Workbook or streaming write-only Workbook | Instantiates Rust-backed in-memory `Workbook` or streaming `WriteOnlyWorkbook` | **Supported** | `test_workbook.py`, `test_writer.py`, `test_phase4_compat.py` | None |
 
 ---
 
-## 2. Workbook APIs (`pyxl.Workbook` & `pyxl.workbook.Workbook`)
+## 2. Workbook APIs (`rpyxl.Workbook` & `rpyxl.workbook.Workbook`)
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `wb.active` | Returns active worksheet; allows assigning int index, title str, or Worksheet object | Returns active worksheet; supports assignment by int, title str, or `Worksheet` | **Supported** | `test_workbook.py`, `test_phase4_compat.py` | None |
 | `wb.sheetnames` | Returns ordered list of worksheet title strings | Returns ordered list of worksheet title strings | **Supported** | `test_workbook.py`, `test_phase4_compat.py` | None |
@@ -40,9 +40,9 @@ Status Definitions:
 
 ---
 
-## 3. Worksheet APIs (`pyxl.worksheet.worksheet.Worksheet`)
+## 3. Worksheet APIs (`rpyxl.worksheet.worksheet.Worksheet`)
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `ws.title` | Get / set sheet title with validation (rejects invalid chars `: \ / ? * [ ]` and >31 chars) | Get / set sheet title with exact regex and length validation | **Supported** | `test_worksheet.py`, `test_phase4_compat.py` | None |
 | `ws.parent` | Reference to parent `Workbook` | Reference to parent `Workbook` | **Supported** | `test_phase4_compat.py` | None |
@@ -70,9 +70,9 @@ Status Definitions:
 
 ---
 
-## 4. Cell APIs (`pyxl.cell.cell.Cell`)
+## 4. Cell APIs (`rpyxl.cell.cell.Cell`)
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `cell.value` | Get / set cell value (`str`, `int`, `float`, `bool`, `date`, `datetime`, `None`) | Get / set cell value backed by Rust `CellValue` enum | **Supported** | `test_cell.py`, `test_phase4_compat.py` | None |
 | `cell.coordinate` | Coordinate string, e.g. `"A1"` | Coordinate string, e.g. `"A1"` | **Supported** | `test_cell.py`, `test_phase4_compat.py` | None |
@@ -91,7 +91,7 @@ Status Definitions:
 
 ## 5. Streaming & Write-Only APIs
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `Workbook(write_only=True)` | Creates streaming workbook optimized for minimal memory write | Zero-buffering Rust streaming workbook writing directly to ZIP | **Supported** | `test_writer.py`, `test_writer_compat.py` | ~7-10x memory reduction vs openpyxl | v0.1.0 |
 | `load_workbook(..., read_only=True)` | Generator-based streaming reader consuming minimal memory | Rust calamine streaming reader with zero Python object accumulation | **Supported** | `test_reader.py`, `test_reader_compat.py` | ~10x memory reduction vs openpyxl | v0.1.0 |
@@ -101,23 +101,23 @@ Status Definitions:
 
 ## 6. Utilities & Exceptions
 
-| Module / API | openpyxl Path | PyXL Path | Status | Test Coverage | Notes | Version |
+| Module / API | openpyxl Path | RPyXL Path | Status | Test Coverage | Notes | Version |
 |---|---|---|---|---|---|---|
-| `get_column_letter(idx)` | `openpyxl.utils` | `pyxl.utils` | **Supported** | `test_phase4_compat.py` | High-speed Rust implementation | v0.1.0 |
-| `column_index_from_string(col)` | `openpyxl.utils` | `pyxl.utils` | **Supported** | `test_phase4_compat.py` | Case-insensitive Rust parser | v0.1.0 |
-| `coordinate_to_tuple(coord)` | `openpyxl.utils` | `pyxl.utils` | **Supported** | `test_phase4_compat.py` | Returns `(row, col)` | v0.1.0 |
-| `range_boundaries(range_str)` | `openpyxl.utils` | `pyxl.utils` | **Supported** | `test_phase4_compat.py` | Returns `(min_col, min_row, max_col, max_row)` | v0.1.0 |
-| `quote_sheetname(sheetname)` | `openpyxl.utils` | `pyxl.utils` | **Supported** | `test_phase4_compat.py` | Handles escaping single quotes | v0.1.0 |
-| `InvalidFileException` | `openpyxl.utils.exceptions` | `pyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
-| `SheetTitleException` | `openpyxl.utils.exceptions` | `pyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
-| `CellCoordinatesException` | `openpyxl.utils.exceptions` | `pyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
-| `NamedRangeException` | `openpyxl.utils.exceptions` | `pyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `OpenpyxlException` | v0.1.0 |
+| `get_column_letter(idx)` | `openpyxl.utils` | `rpyxl.utils` | **Supported** | `test_phase4_compat.py` | High-speed Rust implementation | v0.1.0 |
+| `column_index_from_string(col)` | `openpyxl.utils` | `rpyxl.utils` | **Supported** | `test_phase4_compat.py` | Case-insensitive Rust parser | v0.1.0 |
+| `coordinate_to_tuple(coord)` | `openpyxl.utils` | `rpyxl.utils` | **Supported** | `test_phase4_compat.py` | Returns `(row, col)` | v0.1.0 |
+| `range_boundaries(range_str)` | `openpyxl.utils` | `rpyxl.utils` | **Supported** | `test_phase4_compat.py` | Returns `(min_col, min_row, max_col, max_row)` | v0.1.0 |
+| `quote_sheetname(sheetname)` | `openpyxl.utils` | `rpyxl.utils` | **Supported** | `test_phase4_compat.py` | Handles escaping single quotes | v0.1.0 |
+| `InvalidFileException` | `openpyxl.utils.exceptions` | `rpyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
+| `SheetTitleException` | `openpyxl.utils.exceptions` | `rpyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
+| `CellCoordinatesException` | `openpyxl.utils.exceptions` | `rpyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `ValueError` & `OpenpyxlException` | v0.1.0 |
+| `NamedRangeException` | `openpyxl.utils.exceptions` | `rpyxl.utils.exceptions` | **Supported** | `test_phase4_compat.py` | Inherits `OpenpyxlException` | v0.1.0 |
 
 ---
 
-## 7. Styling Foundation (`pyxl.styles`)
+## 7. Styling Foundation (`rpyxl.styles`)
 
-| API Name | openpyxl Behavior | PyXL Behavior | Status | Test Coverage | Known Differences | Version |
+| API Name | openpyxl Behavior | RPyXL Behavior | Status | Test Coverage | Known Differences | Version |
 |---|---|---|---|---|---|---|
 | `Font(name, size, bold, italic, color)` | Configures font style | Openpyxl-compatible dataclass | **Supported** | `test_phase4_compat.py` | Preserved for API drop-in compatibility | v0.1.0 |
 | `PatternFill(fill_type, start_color, end_color)` | Configures background fill pattern | Openpyxl-compatible dataclass | **Supported** | `test_phase4_compat.py` | Preserved for API drop-in compatibility | v0.1.0 |

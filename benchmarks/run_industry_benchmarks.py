@@ -1,6 +1,6 @@
 """
 Comprehensive Industry-Grade Benchmark Suite:
-Comparing openpyxl, xlsxwriter (Python), calamine (Rust), rust_xlsxwriter (Rust), and PyXL.
+Comparing openpyxl, xlsxwriter (Python), calamine (Rust), rust_xlsxwriter (Rust), and RPyXL.
 
 Metrics:
 - Throughput (cells/sec, rows/sec)
@@ -97,8 +97,8 @@ def ensure_dataset(scale):
     if os.path.exists(path):
         return path
     print(f"Generating enterprise dataset {path} ({scale['cells']:,} cells)...")
-    import pyxl
-    wb = pyxl.Workbook(write_only=True)
+    import rpyxl
+    wb = rpyxl.Workbook(write_only=True)
     ws = wb.create_sheet(title="EnterpriseData")
     ws.append(["ID", "Amount", "Ratio", "Flag", "Timestamp", "Category", "Count", "Rate", "Valid", "Status"])
     for row in generate_enterprise_data(scale["rows"]):
@@ -113,11 +113,11 @@ def ensure_dataset(scale):
 def main():
     print("=" * 80)
     print(" INDUSTRY-LEVEL SPREADSHEET BENCHMARK & COMPARISON")
-    print(" Engines: openpyxl, xlsxwriter (Py), PyXL, calamine (Rust), rust_xlsxwriter (Rust)")
+    print(" Engines: openpyxl, xlsxwriter (Py), RPyXL, calamine (Rust), rust_xlsxwriter (Rust)")
     print("=" * 80)
 
     import openpyxl
-    import pyxl
+    import rpyxl
     import python_calamine
     import xlsxwriter
 
@@ -159,10 +159,10 @@ def main():
             wb.close()
             os.remove(tmp)
 
-        # 2. PyXL Standard Write
-        def _write_pyxl_std():
+        # 2. RPyXL Standard Write
+        def _write_rpyxl_std():
             tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-            wb = pyxl.Workbook()
+            wb = rpyxl.Workbook()
             ws = wb.active
             for r_idx, row in enumerate(data, start=1):
                 for c_idx, val in enumerate(row, start=1):
@@ -198,10 +198,10 @@ def main():
             wb.close()
             os.remove(tmp)
 
-        # 5. PyXL Streaming Write-Only
-        def _write_pyxl_stream():
+        # 5. RPyXL Streaming Write-Only
+        def _write_rpyxl_stream():
             tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-            wb = pyxl.Workbook(write_only=True)
+            wb = rpyxl.Workbook(write_only=True)
             ws = wb.create_sheet()
             for row in data:
                 ws.append(row)
@@ -220,7 +220,7 @@ def main():
         # Run stats
         results["write_standard"][s_name] = {
             "openpyxl": run_stats(_write_openpyxl_std),
-            "pyxl": run_stats(_write_pyxl_std),
+            "rpyxl": run_stats(_write_rpyxl_std),
         }
         
         # Measure rust_xlsxwriter
@@ -239,7 +239,7 @@ def main():
         results["write_streaming"][s_name] = {
             "openpyxl_stream": run_stats(_write_openpyxl_stream),
             "xlsxwriter_py": run_stats(_write_xlsxwriter),
-            "pyxl_stream": run_stats(_write_pyxl_stream),
+            "rpyxl_stream": run_stats(_write_rpyxl_stream),
             "rust_xlsxwriter": rust_stats,
         }
 
@@ -263,9 +263,9 @@ def main():
             wb.close()
             return cnt
 
-        # 2. PyXL Standard Load
-        def _read_pyxl_std():
-            wb = pyxl.load_workbook(path, data_only=True)
+        # 2. RPyXL Standard Load
+        def _read_rpyxl_std():
+            wb = rpyxl.load_workbook(path, data_only=True)
             ws = wb.active
             cnt = 0
             for r in ws.iter_rows(values_only=True):
@@ -292,9 +292,9 @@ def main():
             wb.close()
             return cnt
 
-        # 5. PyXL Streaming Read-Only
-        def _read_pyxl_stream():
-            wb = pyxl.load_workbook(path, read_only=True)
+        # 5. RPyXL Streaming Read-Only
+        def _read_rpyxl_stream():
+            wb = rpyxl.load_workbook(path, read_only=True)
             ws = wb.active
             cnt = 0
             for r in ws.iter_rows(values_only=True):
@@ -304,12 +304,12 @@ def main():
 
         results["read_standard"][s_name] = {
             "openpyxl": run_stats(_read_openpyxl_std),
-            "pyxl": run_stats(_read_pyxl_std),
+            "rpyxl": run_stats(_read_rpyxl_std),
             "calamine": run_stats(_read_calamine),
         }
         results["read_streaming"][s_name] = {
             "openpyxl": run_stats(_read_openpyxl_stream),
-            "pyxl": run_stats(_read_pyxl_stream),
+            "rpyxl": run_stats(_read_rpyxl_stream),
         }
 
         # TTFR on Large and Stress
@@ -326,7 +326,7 @@ def main():
 
             def _ttfr_px():
                 t0 = time.perf_counter()
-                wb = pyxl.load_workbook(path, read_only=True)
+                wb = rpyxl.load_workbook(path, read_only=True)
                 ws = wb.active
                 gen = ws.iter_rows(values_only=True)
                 _ = next(gen)
@@ -336,7 +336,7 @@ def main():
 
             results["ttfr"][s_name] = {
                 "openpyxl": min(_ttfr_ox() for _ in range(5)),
-                "pyxl": min(_ttfr_px() for _ in range(5)),
+                "rpyxl": min(_ttfr_px() for _ in range(5)),
             }
 
     # ==========================================================================
@@ -362,9 +362,9 @@ def main():
         wb.close()
         os.remove(tmp)
 
-    def _mutate_pyxl():
+    def _mutate_rpyxl():
         tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-        wb = pyxl.load_workbook(large_path)
+        wb = rpyxl.load_workbook(large_path)
         ws = wb.active
         total = 0.0
         for row in range(2, ws.max_row + 1):
@@ -379,7 +379,7 @@ def main():
         os.remove(tmp)
 
     results["mutation"]["openpyxl"] = run_stats(_mutate_openpyxl, iterations=3)
-    results["mutation"]["pyxl"] = run_stats(_mutate_pyxl, iterations=3)
+    results["mutation"]["rpyxl"] = run_stats(_mutate_rpyxl, iterations=3)
 
     # ==========================================================================
     # SCENARIO 4: MULTI-SHEET PARALLELISM (100,000 Rows across 5 sheets)
@@ -404,9 +404,9 @@ def main():
         wb.close()
         os.remove(tmp)
 
-    def _multisheet_pyxl():
+    def _multisheet_rpyxl():
         tmp = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-        wb = pyxl.Workbook()
+        wb = rpyxl.Workbook()
         ws_first = wb.active
         ws_first.title = "Dept_0"
         for r_idx, row in enumerate(sheet_data, start=1):
@@ -422,15 +422,15 @@ def main():
         os.remove(tmp)
 
     results["multisheet"]["openpyxl"] = run_stats(_multisheet_openpyxl, iterations=2)
-    results["multisheet"]["pyxl"] = run_stats(_multisheet_pyxl, iterations=2)
+    results["multisheet"]["rpyxl"] = run_stats(_multisheet_rpyxl, iterations=2)
 
     # ==========================================================================
     # SCENARIO 5: CROSS-ENGINE ROUND-TRIP FIDELITY & PRECISION
     # ==========================================================================
     print("\n[5/5] Executing Cross-Engine Precision & Round-Trip Validation...")
-    # Write precision file with PyXL
+    # Write precision file with RPyXL
     tmp_matrix = tempfile.NamedTemporaryFile(suffix=".xlsx", delete=False).name
-    wb = pyxl.Workbook()
+    wb = rpyxl.Workbook()
     ws = wb.active
     ws["A1"] = "Precision Float"
     ws["B1"] = 1234567.89012345
@@ -491,12 +491,12 @@ def main():
 
     ox_w = [s["cells"] / results["write_streaming"][s["name"]]["openpyxl_stream"]["median"] for s in SCALES]
     xw_w = [s["cells"] / results["write_streaming"][s["name"]]["xlsxwriter_py"]["median"] for s in SCALES]
-    px_w = [s["cells"] / results["write_streaming"][s["name"]]["pyxl_stream"]["median"] for s in SCALES]
+    px_w = [s["cells"] / results["write_streaming"][s["name"]]["rpyxl_stream"]["median"] for s in SCALES]
     rust_w = [s["cells"] / results["write_streaming"][s["name"]]["rust_xlsxwriter"]["median"] for s in SCALES]
 
     ax.bar([i - 1.5*width for i in x], ox_w, width, label="openpyxl (Py Stream)", color="#E57373")
     ax.bar([i - 0.5*width for i in x], xw_w, width, label="xlsxwriter (Py Stream)", color="#FFB74D")
-    ax.bar([i + 0.5*width for i in x], px_w, width, label="PyXL (Rust+PyO3 Stream)", color="#4CAF50")
+    ax.bar([i + 0.5*width for i in x], px_w, width, label="RPyXL (Rust+PyO3 Stream)", color="#4CAF50")
     ax.bar([i + 1.5*width for i in x], rust_w, width, label="rust_xlsxwriter (Pure Rust)", color="#1E88E5")
 
     ax.set_title("Industry Write Throughput Across Scales (Higher is Better)", fontsize=13, fontweight="bold")
@@ -513,11 +513,11 @@ def main():
     # Chart 2: Read Throughput
     fig, ax = plt.subplots(figsize=(10, 5.5), dpi=300)
     ox_r = [s["cells"] / results["read_standard"][s["name"]]["openpyxl"]["median"] for s in SCALES]
-    px_r = [s["cells"] / results["read_standard"][s["name"]]["pyxl"]["median"] for s in SCALES]
+    px_r = [s["cells"] / results["read_standard"][s["name"]]["rpyxl"]["median"] for s in SCALES]
     cal_r = [s["cells"] / results["read_standard"][s["name"]]["calamine"]["median"] for s in SCALES]
 
     ax.bar([i - width for i in x], ox_r, width, label="openpyxl (Python)", color="#E57373")
-    ax.bar([i for i in x], px_r, width, label="PyXL (Rust+PyO3)", color="#4CAF50")
+    ax.bar([i for i in x], px_r, width, label="RPyXL (Rust+PyO3)", color="#4CAF50")
     ax.bar([i + width for i in x], cal_r, width, label="calamine (Pure Rust)", color="#8E24AA")
 
     ax.set_title("Industry Read Throughput Across Scales (Higher is Better)", fontsize=13, fontweight="bold")
@@ -540,16 +540,16 @@ def main():
         s_name = s["name"]
         w_ox = results["write_streaming"][s_name]["openpyxl_stream"]["median"]
         w_xw = results["write_streaming"][s_name]["xlsxwriter_py"]["median"]
-        w_px = results["write_streaming"][s_name]["pyxl_stream"]["median"]
+        w_px = results["write_streaming"][s_name]["rpyxl_stream"]["median"]
         w_rust = results["write_streaming"][s_name]["rust_xlsxwriter"]["median"]
         w_table.append({
             "Dataset": s_name,
             "openpyxl Stream": f"{w_ox:.4f}s ({s['cells']/w_ox:,.0f} c/s)",
             "xlsxwriter (Py)": f"{w_xw:.4f}s ({s['cells']/w_xw:,.0f} c/s)",
-            "PyXL Stream": f"{w_px:.4f}s ({s['cells']/w_px:,.0f} c/s)",
+            "RPyXL Stream": f"{w_px:.4f}s ({s['cells']/w_px:,.0f} c/s)",
             "rust_xlsxwriter": f"{w_rust:.4f}s ({s['cells']/w_rust:,.0f} c/s)",
-            "PyXL vs openpyxl": f"{w_ox/w_px:.1f}x faster",
-            "PyXL vs xlsxwriter": f"{w_xw/w_px:.1f}x faster",
+            "RPyXL vs openpyxl": f"{w_ox/w_px:.1f}x faster",
+            "RPyXL vs xlsxwriter": f"{w_xw/w_px:.1f}x faster",
         })
     print(tabulate(w_table, headers="keys", tablefmt="github"))
 
@@ -560,15 +560,15 @@ def main():
     for s in SCALES:
         s_name = s["name"]
         r_ox = results["read_standard"][s_name]["openpyxl"]["median"]
-        r_px = results["read_standard"][s_name]["pyxl"]["median"]
+        r_px = results["read_standard"][s_name]["rpyxl"]["median"]
         r_cal = results["read_standard"][s_name]["calamine"]["median"]
         r_table.append({
             "Dataset": s_name,
             "openpyxl (Python)": f"{r_ox:.4f}s ({s['cells']/r_ox:,.0f} c/s)",
-            "PyXL (Rust+PyO3)": f"{r_px:.4f}s ({s['cells']/r_px:,.0f} c/s)",
+            "RPyXL (Rust+PyO3)": f"{r_px:.4f}s ({s['cells']/r_px:,.0f} c/s)",
             "calamine (Rust)": f"{r_cal:.4f}s ({s['cells']/r_cal:,.0f} c/s)",
-            "PyXL vs openpyxl": f"{r_ox/r_px:.1f}x faster",
-            "PyXL vs calamine": f"+{(r_px/r_cal - 1)*100:.0f}% overhead",
+            "RPyXL vs openpyxl": f"{r_ox/r_px:.1f}x faster",
+            "RPyXL vs calamine": f"+{(r_px/r_cal - 1)*100:.0f}% overhead",
         })
     print(tabulate(r_table, headers="keys", tablefmt="github"))
 
@@ -576,19 +576,19 @@ def main():
     print(" SUMMARY: TRANSACTIONAL MUTATION (Read-Modify-Write 100k Cells)")
     print("="*80)
     mut_ox = results["mutation"]["openpyxl"]["median"]
-    mut_px = results["mutation"]["pyxl"]["median"]
+    mut_px = results["mutation"]["rpyxl"]["median"]
     print(f"openpyxl : {mut_ox:.4f}s (Peak RSS: {results['mutation']['openpyxl']['peak_rss_mb']:.1f} MB)")
-    print(f"PyXL     : {mut_px:.4f}s (Peak RSS: {results['mutation']['pyxl']['peak_rss_mb']:.1f} MB)")
-    print(f"Speedup  : {mut_ox/mut_px:.2f}x faster with PyXL")
+    print(f"RPyXL     : {mut_px:.4f}s (Peak RSS: {results['mutation']['rpyxl']['peak_rss_mb']:.1f} MB)")
+    print(f"Speedup  : {mut_ox/mut_px:.2f}x faster with RPyXL")
 
     print("\n" + "="*80)
     print(" SUMMARY: MULTI-SHEET PARALLELISM (100k Rows across 5 Sheets = 1M Cells)")
     print("="*80)
     ms_ox = results["multisheet"]["openpyxl"]["median"]
-    ms_px = results["multisheet"]["pyxl"]["median"]
+    ms_px = results["multisheet"]["rpyxl"]["median"]
     print(f"openpyxl (GIL throttled) : {ms_ox:.4f}s ({1_000_000/ms_ox:,.0f} cells/s)")
-    print(f"PyXL (Rayon multi-thread): {ms_px:.4f}s ({1_000_000/ms_px:,.0f} cells/s)")
-    print(f"Speedup                  : {ms_ox/ms_px:.2f}x faster with PyXL")
+    print(f"RPyXL (Rayon multi-thread): {ms_px:.4f}s ({1_000_000/ms_px:,.0f} cells/s)")
+    print(f"Speedup                  : {ms_ox/ms_px:.2f}x faster with RPyXL")
 
     print("\n" + "="*80)
     print(" SUMMARY: CROSS-ENGINE FIDELITY")

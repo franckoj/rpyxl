@@ -1,0 +1,21 @@
+[package]
+name = "rpyxl-python"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+name = "_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+rpyxl-core = { path = "../rpyxl-core" }
+rpyxl-ooxml = { path = "../rpyxl-ooxml" }
+pyo3 = { version = "0.22", features = ["extension-module", "abi3-py39"] }
+parking_lot = "0.12"
+zip = { version = "2.2", default-features = false, features = ["deflate"] }
+
+
+
+[dev-dependencies]
