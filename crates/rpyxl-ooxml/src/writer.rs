@@ -428,7 +428,7 @@ fn write_cell(row: u32, col: u32, val: &CellValue, out: &mut String) {
         CellValue::Empty => {}
         CellValue::String(s) => {
             write_cell_open(row, col, out);
-            out.push_str("\" t=\"inlineStr\"><is><t>");
+            out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
             write_xml_escaped(s, out);
             out.push_str("</t></is></c>");
         }
@@ -461,7 +461,7 @@ fn write_cell(row: u32, col: u32, val: &CellValue, out: &mut String) {
                 out.push_str("</v></c>");
             } else {
                 write_cell_open(row, col, out);
-                out.push_str("\" t=\"inlineStr\"><is><t>");
+                out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
                 write_xml_escaped(s, out);
                 out.push_str("</t></is></c>");
             }
@@ -521,6 +521,7 @@ fn write_xml_escaped(s: &str, out: &mut String) {
             b'>' => "&gt;",
             b'"' => "&quot;",
             b'\'' => "&apos;",
+            b'\r' => "&#13;",
             _ => continue,
         };
         if idx > last_idx {
@@ -579,6 +580,20 @@ fn date_to_excel_serial(s: &str) -> Option<f64> {
 mod tests {
     use super::*;
     use crate::reader::XlsxPackage;
+
+    #[test]
+    fn test_text_serialization_preserves_carriage_returns_and_whitespace() {
+        let mut output = String::new();
+        write_cell(
+            1,
+            1,
+            &CellValue::String("  héllo <&>\r\nline2\r  ".to_string()),
+            &mut output,
+        );
+        assert!(output.contains("<t xml:space=\"preserve\">"));
+        assert!(output.contains("  héllo &lt;&amp;&gt;&#13;\nline2&#13;  </t>"));
+        assert!(!output.contains('\r'));
+    }
 
     #[test]
     fn test_date_to_excel_serial() {

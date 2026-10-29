@@ -14,7 +14,7 @@ use rpyxl_core::error::{RpyxlError, RpyxlResult};
 use rpyxl_core::workbook::Workbook;
 use rpyxl_core::worksheet::Worksheet;
 
-use crate::shared_strings::SharedStringsTable;
+use crate::shared_strings::{decode_xml_text, SharedStringsTable};
 use crate::styles::Styles;
 
 #[derive(Debug, Clone)]
@@ -495,7 +495,7 @@ pub fn parse_worksheet_into<R: Read>(
     data_only: bool,
 ) -> RpyxlResult<()> {
     let mut xml_reader = Reader::from_reader(BufReader::new(reader));
-    xml_reader.config_mut().trim_text(true);
+    xml_reader.config_mut().trim_text(false);
 
     let mut buf = Vec::new();
 
@@ -544,17 +544,14 @@ pub fn parse_worksheet_into<R: Read>(
             },
             Ok(Event::Text(ref e)) => {
                 if in_v {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 } else if in_f {
-                    if let Ok(txt) = e.unescape() {
-                        formula_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    formula_text.push_str(&txt);
                 } else if in_is_t {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 }
             }
             Ok(Event::End(ref e)) => match e.local_name().as_ref() {
@@ -604,7 +601,7 @@ pub fn parse_worksheet_streaming<R: Read>(
     data_only: bool,
 ) -> RpyxlResult<Vec<Vec<(u32, u32, CellValue)>>> {
     let mut xml_reader = Reader::from_reader(BufReader::new(reader));
-    xml_reader.config_mut().trim_text(true);
+    xml_reader.config_mut().trim_text(false);
 
     let mut buf = Vec::new();
     let mut rows = Vec::new();
@@ -671,17 +668,14 @@ pub fn parse_worksheet_streaming<R: Read>(
             },
             Ok(Event::Text(ref e)) => {
                 if in_v {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 } else if in_f {
-                    if let Ok(txt) = e.unescape() {
-                        formula_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    formula_text.push_str(&txt);
                 } else if in_is_t {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 }
             }
             Ok(Event::End(ref e)) => match e.local_name().as_ref() {
@@ -741,6 +735,11 @@ fn resolve_cell_value(
     styles: &Styles,
     data_only: bool,
 ) -> CellValue {
+    let val_text = if matches!(t_attr, "inlineStr" | "str" | "e") {
+        val_text
+    } else {
+        val_text.trim()
+    };
     let raw_val = if t_attr == "s" {
         // Shared string index
         if let Ok(idx) = val_text.parse::<usize>() {
@@ -828,7 +827,7 @@ impl<R: Read> StreamingRowReader<R> {
         data_only: bool,
     ) -> Self {
         let mut xml_reader = Reader::from_reader(BufReader::new(reader));
-        xml_reader.config_mut().trim_text(true);
+        xml_reader.config_mut().trim_text(false);
         Self {
             xml_reader,
             shared_strings,
@@ -909,17 +908,14 @@ impl<R: Read> StreamingRowReader<R> {
                 },
                 Ok(Event::Text(ref e)) if inside_row => {
                     if in_v {
-                        if let Ok(txt) = e.unescape() {
-                            val_text.push_str(&txt);
-                        }
+                        let txt = decode_xml_text(e, self.xml_reader.decoder())?;
+                        val_text.push_str(&txt);
                     } else if in_f {
-                        if let Ok(txt) = e.unescape() {
-                            formula_text.push_str(&txt);
-                        }
+                        let txt = decode_xml_text(e, self.xml_reader.decoder())?;
+                        formula_text.push_str(&txt);
                     } else if in_is_t {
-                        if let Ok(txt) = e.unescape() {
-                            val_text.push_str(&txt);
-                        }
+                        let txt = decode_xml_text(e, self.xml_reader.decoder())?;
+                        val_text.push_str(&txt);
                     }
                 }
                 Ok(Event::End(ref e)) => match e.local_name().as_ref() {
@@ -989,7 +985,7 @@ pub fn read_single_cell<R: Read>(
     data_only: bool,
 ) -> RpyxlResult<CellValue> {
     let mut xml_reader = Reader::from_reader(BufReader::new(reader));
-    xml_reader.config_mut().trim_text(true);
+    xml_reader.config_mut().trim_text(false);
 
     let mut buf = Vec::new();
     let mut current_row = 0u32;
@@ -1050,17 +1046,14 @@ pub fn read_single_cell<R: Read>(
             },
             Ok(Event::Text(ref e)) => {
                 if in_v {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 } else if in_f {
-                    if let Ok(txt) = e.unescape() {
-                        formula_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    formula_text.push_str(&txt);
                 } else if in_is_t {
-                    if let Ok(txt) = e.unescape() {
-                        val_text.push_str(&txt);
-                    }
+                    let txt = decode_xml_text(e, xml_reader.decoder())?;
+                    val_text.push_str(&txt);
                 }
             }
             Ok(Event::End(ref e)) => match e.local_name().as_ref() {
