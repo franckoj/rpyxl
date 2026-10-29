@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "rpyxl"
-version = "0.1.0"
+version = "0.1.1"
 description = "A high-performance, Rust-powered alternative to openpyxl"
 authors = [{ name = "RPyXL Contributors" }]
 license = { text = "MIT OR Apache-2.0" }
