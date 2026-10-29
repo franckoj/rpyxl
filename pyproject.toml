@@ -1,3 +1,4 @@
+
 [build-system]
 requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
@@ -10,7 +11,17 @@ authors = [{ name = "PyXL Contributors" }]
 license = { text = "MIT OR Apache-2.0" }
 readme = "README.md"
 requires-python = ">=3.9"
-keywords = ["excel", "xlsx", "openpyxl", "rust", "pyo3", "spreadsheet", "high-performance", "streaming"]
+keywords = [
+    "excel",
+    "xlsx",
+    "openpyxl",
+    "rust",
+    "pyo3",
+    "spreadsheet",
+    "high-performance",
+    "streaming",
+]
+
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
@@ -28,6 +39,7 @@ classifiers = [
     "Topic :: Office/Business :: Financial :: Spreadsheet",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
+
 dependencies = []
 
 [project.urls]
@@ -41,6 +53,7 @@ Changelog = "https://github.com/franckoj/pyxl/blob/main/docs/development_progres
 dev = [
     "pytest>=7.4.0",
     "openpyxl>=3.1.2",
+    "python-calamine",
     "psutil>=5.9.0",
     "tabulate>=0.9.0",
     "matplotlib>=3.7.0",
