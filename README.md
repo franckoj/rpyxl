@@ -1,10 +1,10 @@
 # RPyXL: A High-Performance, Rust-Powered Alternative to openpyxl
 
-[![CI](https://github.com/franckoj/pyxl/actions/workflows/ci.yml/badge.svg)](https://github.com/franckoj/pyxl/actions/workflows/ci.yml)
+[![CI](https://github.com/franckoj/rpyxl/actions/workflows/ci.yml/badge.svg)](https://github.com/franckoj/rpyxl/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE)
 [![Python Versions](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)](https://pypi.org/project/rpyxl/)
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org/)
-[![ABI3](https://img.shields.io/badge/wheels-ABI3%20Universal-green.svg)](https://github.com/franckoj/pyxl)
+[![ABI3](https://img.shields.io/badge/wheels-ABI3%20Universal-green.svg)](https://github.com/franckoj/rpyxl)
 
 RPyXL is a high-performance Python spreadsheet library providing **drop-in compatibility with [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)**, backed by a memory-safe, multi-threaded Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
 
@@ -133,7 +133,7 @@ pip install rpyxl
 
 ### From Source
 ```bash
-git clone https://github.com/franckoj/pyxl.git
+git clone https://github.com/franckoj/rpyxl.git
 cd rpyxl
 pip install maturin
 maturin develop --release

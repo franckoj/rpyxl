@@ -43,11 +43,11 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/franckoj/pyxl"
-Repository = "https://github.com/franckoj/pyxl"
-Documentation = "https://github.com/franckoj/pyxl#readme"
-Issues = "https://github.com/franckoj/pyxl/issues"
-Changelog = "https://github.com/franckoj/pyxl/blob/main/docs/development_progress.md"
+Homepage = "https://github.com/franckoj/rpyxl"
+Repository = "https://github.com/franckoj/rpyxl"
+Documentation = "https://github.com/franckoj/rpyxl#readme"
+Issues = "https://github.com/franckoj/rpyxl/issues"
+Changelog = "https://github.com/franckoj/rpyxl/blob/main/docs/development_progress.md"
 
 [project.optional-dependencies]
 dev = [

@@ -11,7 +11,7 @@ version = "0.1.0"
 edition = "2021"
 authors = ["RPyXL Contributors"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/pyxl/pyxl"
+repository = "https://github.com/franckoj/rpyxl"
 
 [profile.release]
 opt-level = 3

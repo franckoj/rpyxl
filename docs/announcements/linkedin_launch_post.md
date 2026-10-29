@@ -57,7 +57,7 @@ A 5× to 10× speedup is just Phase 1. Here is what we're building next to unloc
 📦 **PyPI / Wheels**: Universal ABI3 wheels (`cp39-abi3`) available for Linux, macOS (Intel & Apple Silicon), and Windows across Python 3.9 through 3.13.
 
 ⭐ Check out the open-source repo, benchmark reports, and migration guide:
-👉 **GitHub**: https://github.com/franckoj/pyxl
+👉 **GitHub**: https://github.com/franckoj/rpyxl
 
 I’d love to hear your thoughts, feedback, and edge-case benchmark requests! What’s your biggest bottleneck when working with spreadsheets in Python today?
 
