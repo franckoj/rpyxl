@@ -101,7 +101,7 @@ class Worksheet:
     def cell(self, row, column, value=None):
         coordinate(column, row)
         if self.parent.write_only:
-            raise TypeError('Random cell access is unavailable in write-only mode')
+            raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'cell'")
         if self.parent.read_only and value is not None:
             self._check_writable()
         native = self._native.cell(row=row, column=column)
@@ -126,6 +126,8 @@ class Worksheet:
         return self._native.append(iterable)
 
     def iter_rows(self, min_row=None, max_row=None, min_col=None, max_col=None, values_only=False):
+        if self.parent.write_only:
+            raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_rows'")
         args = dict(min_row=min_row, max_row=max_row, min_col=min_col, max_col=max_col)
         if values_only:
             return iter(self._native.iter_rows(values_only=True, **args))
@@ -146,6 +148,8 @@ class Worksheet:
         return rows()
 
     def iter_cols(self, min_col=None, max_col=None, min_row=None, max_row=None, values_only=False):
+        if self.parent.write_only:
+            raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_cols'")
         if self.parent.read_only:
             raise NotImplementedError('Column iteration is unavailable in read-only mode')
         args = dict(min_col=min_col, max_col=max_col, min_row=min_row, max_row=max_row)

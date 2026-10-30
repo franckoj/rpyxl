@@ -283,7 +283,7 @@ class Reference:
             self.sheetname = sheet.strip("'").replace("''", "'")
             self.min_col, self.min_row, self.max_col, self.max_row = range_bounds(cells)
         else:
-            self.sheetname = getattr(worksheet, "title", worksheet)
+            self.sheetname = worksheet if isinstance(worksheet, str) else getattr(worksheet, "title", None)
             if not isinstance(self.sheetname, str):
                 raise ValueError("Reference requires a worksheet or sheet title")
             self.min_col, self.min_row = min_col, min_row
@@ -293,7 +293,9 @@ class Reference:
 
     @property
     def cells(self):
-        return "$%s$%s:$%s$%s" % (column_letter(self.min_col), self.min_row, column_letter(self.max_col), self.max_row)
+        first = "$%s$%s" % (column_letter(self.min_col), self.min_row)
+        last = "$%s$%s" % (column_letter(self.max_col), self.max_row)
+        return first if first == last else first + ":" + last
 
     def __str__(self):
         return "'%s'!%s" % (self.sheetname.replace("'", "''"), self.cells)
@@ -329,7 +331,8 @@ class BarChart(_XMLModel):
             c2, r2 = (data.max_col, index) if from_rows else (index, data.max_row)
             title_ref = None
             if titles_from_data:
-                title_ref = str(Reference(data.sheetname, c1, r1, c1, r1))
+                sheetname = data.sheetname.replace("'", "''")
+                title_ref = "'%s'!%s%s" % (sheetname, column_letter(c1), r1)
                 if from_rows:
                     c1 += 1
                 else:
