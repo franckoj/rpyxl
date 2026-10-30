@@ -1,12 +1,21 @@
 """Prepare sparse cell styles for native replacement without touching native state."""
 
 from dataclasses import fields, is_dataclass
+from functools import lru_cache
 from xml.etree import ElementTree as ET
 
 from . import _metadata
 from ._models import CellMetadata, MetadataBook, MetadataSheet, coordinate_parts
+from ._style_pool import FrozenStyle, unwrap_style
+from .styles import STYLE_INTERNAL_FIELDS, _StyleModel
 
 _STYLE_FIELDS = ("font", "fill", "border", "alignment", "protection")
+
+
+@lru_cache(maxsize=64)
+def _field_layout(model_type):
+    layout = fields(model_type)
+    return layout, frozenset(field.name for field in layout)
 
 
 def _snapshot(value):
@@ -16,6 +25,10 @@ def _snapshot(value):
     entry without serializing every cell. Never retain an identity-based cache;
     callers can edit nested Colors, Sides, or original XML between saves.
     """
+    if type(value) is FrozenStyle:
+        return value.fingerprint
+    if type(value) in (type(None), bool, int, float, str, bytes):
+        return type(value), value
     if isinstance(value, ET.Element):
         return (
             value.tag,
@@ -24,13 +37,17 @@ def _snapshot(value):
             value.tail,
             tuple(_snapshot(child) for child in value),
         )
+    resolved = unwrap_style(value)
+    if resolved is not value:
+        return _snapshot(resolved)
     if is_dataclass(value):
-        names = {field.name for field in fields(value)}
+        layout, names = _field_layout(type(value))
+        if isinstance(value, _StyleModel):
+            names = names | STYLE_INTERNAL_FIELDS
         return (
             type(value),
             tuple(
-                (field.name, _snapshot(getattr(value, field.name)))
-                for field in fields(value)
+                (field.name, _snapshot(getattr(value, field.name))) for field in layout
             ),
             tuple(
                 sorted(

@@ -8,6 +8,7 @@ from .._core import ReadOnlyWorkbook as NativeReadOnlyWorkbook
 from .._core import Workbook as NativeWorkbook
 from .._core import WriteOnlyWorkbook as NativeWriteOnlyWorkbook
 from .._models import MetadataBook, MetadataSheet
+from .._style_pool import StylePool
 
 
 class _WorkbookMeta(type):
@@ -46,6 +47,8 @@ class Workbook(metaclass=_WorkbookMeta):
         self._source = _source
         self._owns_source = _owns_source
         self._book = None
+        self._style_pool = StylePool()
+        self._style_defaults = {}
         self._sheets = {}
         self._overlay = False
         self._closed = False
@@ -94,7 +97,10 @@ class Workbook(metaclass=_WorkbookMeta):
 
     def _sheet_metadata(self, title):
         book = self._ensure_metadata()
-        return book.sheets.setdefault(title, MetadataSheet(title=title))
+        metadata = book.sheets.get(title)
+        if metadata is None:
+            metadata = book.sheets[title] = MetadataSheet(title=title)
+        return metadata
 
     @property
     def properties(self):
