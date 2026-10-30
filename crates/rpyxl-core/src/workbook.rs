@@ -8,6 +8,8 @@ pub struct Workbook {
     active_index: usize,
     pub data_only: bool,
     pub read_only: bool,
+    /// Whether numeric dates use the 1904-01-01 epoch instead of Excel's 1900 epoch.
+    pub date_1904: bool,
 }
 
 impl Default for Workbook {
@@ -24,6 +26,7 @@ impl Workbook {
             active_index: 0,
             data_only: false,
             read_only: false,
+            date_1904: false,
         }
     }
 
@@ -33,6 +36,7 @@ impl Workbook {
             active_index: 0,
             data_only,
             read_only,
+            date_1904: false,
         }
     }
 

@@ -6,38 +6,40 @@
 [![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org/)
 [![ABI3](https://img.shields.io/badge/wheels-ABI3%20Universal-green.svg)](https://github.com/franckoj/rpyxl)
 
-RPyXL is a high-performance Python spreadsheet library providing **drop-in compatibility with [openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)**, backed by a memory-safe, multi-threaded Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
+RPyXL is an experimental Python spreadsheet library with an **[openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)-style API**, backed by a Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
+
+**Compatibility is incomplete.** The `fix/text-fidelity` branch contains unverified data-fidelity and rich-feature implementations. Runtime and interoperability testing is deferred; these changes do not establish production readiness, lossless workbook preservation, or general drop-in compatibility. See the [remediation plan](docs/remediation_plan.md) for status and limitations.
 
 ---
 
 ## Performance Highlights
 
-RPyXL provides speedups of **4.7× to 8.7×** across common spreadsheet workflows with peak throughput exceeding **1.68 million cells/second**:
+Earlier benchmarks reported speedups of **4.7Ãƒâ€” to 8.7Ãƒâ€”** for supported workloads, with peak throughput exceeding **1.68 million cells/second**. These measurements have not been revalidated for the compatibility changes on this branch:
 
 | Scale | Dataset | Operation | openpyxl | RPyXL | Speedup | RPyXL Throughput |
 |---|---|---|---|---|---|---|
-| **Small** | 1,000 cells (100r × 10c) | Standard Save | 0.0093s | **0.0020s** | **4.71× faster** | 505,082 cells/s |
-| | | Streaming Write-Only | 0.0130s | **0.0022s** | **5.89× faster** | 452,753 cells/s |
-| | | Streaming Read-Only | 0.0102s | **0.0024s** | **4.18× faster** | 409,948 cells/s |
-| **Medium** | 10,000 cells (1,000r × 10c) | Standard Save | 0.0512s | **0.0101s** | **5.05× faster** | 987,167 cells/s |
-| | | Streaming Write-Only | 0.0493s | **0.0071s** | **6.97× faster** | 1,414,669 cells/s |
-| | | Streaming Read-Only | 0.0428s | **0.0113s** | **3.80× faster** | 888,284 cells/s |
-| **Large** | 100,000 cells (10,000r × 10c) | Standard Save | 0.5115s | **0.0719s** | **7.12× faster** | 1,391,000 cells/s |
-| | | Streaming Write-Only | 0.4204s | **0.0648s** | **6.49× faster** | 1,542,970 cells/s |
-| | | Standard Load | 0.5678s | **0.0607s** | **9.35× faster** | 1,647,446 cells/s |
-| | | Streaming Read-Only | 0.3389s | **0.0687s** | **4.93× faster** | 1,455,411 cells/s |
-| **Stress** | 500,000 cells (50,000r × 10c) | Standard Save | 2.7976s | **0.3447s** | **8.12× faster** | 1,450,658 cells/s |
-| | | Streaming Write-Only | 2.1202s | **0.2961s** | **7.16× faster** | **1,688,650 cells/s** |
-| | | Standard Load | 2.7133s | **0.3109s** | **8.73× faster** | 1,608,234 cells/s |
-| | | Streaming Read-Only | 1.6987s | **0.3312s** | **5.13× faster** | 1,509,715 cells/s |
+| **Small** | 1,000 cells (100r Ã— 10c) | Standard Save | 0.0093s | **0.0020s** | **4.71Ã— faster** | 505,082 cells/s |
+| | | Streaming Write-Only | 0.0130s | **0.0022s** | **5.89Ã— faster** | 452,753 cells/s |
+| | | Streaming Read-Only | 0.0102s | **0.0024s** | **4.18Ã— faster** | 409,948 cells/s |
+| **Medium** | 10,000 cells (1,000r Ã— 10c) | Standard Save | 0.0512s | **0.0101s** | **5.05Ã— faster** | 987,167 cells/s |
+| | | Streaming Write-Only | 0.0493s | **0.0071s** | **6.97Ã— faster** | 1,414,669 cells/s |
+| | | Streaming Read-Only | 0.0428s | **0.0113s** | **3.80Ã— faster** | 888,284 cells/s |
+| **Large** | 100,000 cells (10,000r Ã— 10c) | Standard Save | 0.5115s | **0.0719s** | **7.12Ã— faster** | 1,391,000 cells/s |
+| | | Streaming Write-Only | 0.4204s | **0.0648s** | **6.49Ã— faster** | 1,542,970 cells/s |
+| | | Standard Load | 0.5678s | **0.0607s** | **9.35Ã— faster** | 1,647,446 cells/s |
+| | | Streaming Read-Only | 0.3389s | **0.0687s** | **4.93Ã— faster** | 1,455,411 cells/s |
+| **Stress** | 500,000 cells (50,000r Ã— 10c) | Standard Save | 2.7976s | **0.3447s** | **8.12Ã— faster** | 1,450,658 cells/s |
+| | | Streaming Write-Only | 2.1202s | **0.2961s** | **7.16Ã— faster** | **1,688,650 cells/s** |
+| | | Standard Load | 2.7133s | **0.3109s** | **8.73Ã— faster** | 1,608,234 cells/s |
+| | | Streaming Read-Only | 1.6987s | **0.3312s** | **5.13Ã— faster** | 1,509,715 cells/s |
 
 *RAM Savings on 500k Cells: RPyXL uses **225 MB** vs openpyxl's **373 MB** (148 MB less RAM).*
 
 ---
 
-## 1-Minute Drop-in Migration
+## Migration for Supported Workflows
 
-For existing projects using `openpyxl`, you can immediately replace the import:
+For existing projects using `openpyxl`, the import can be changed as follows. Validate values, types, and required features before migrating:
 
 ```python
 # Before
@@ -46,7 +48,7 @@ import openpyxl
 # After
 import rpyxl as openpyxl
 
-# Everything else remains identical!
+# Validate this workflow against your original workbook and requirements.
 wb = openpyxl.load_workbook("large_financials.xlsx", data_only=True)
 ws = wb.active
 print(ws["A1"].value)
@@ -97,7 +99,7 @@ wb.save("transactions.xlsx")
 ```
 
 ### 3. Streaming Reader (`read_only=True`)
-Iterates rows on-the-fly with a 550× faster time-to-first-row:
+Iterates rows on-the-fly with a 550Ã— faster time-to-first-row:
 
 ```python
 import rpyxl

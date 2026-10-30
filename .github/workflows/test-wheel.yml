@@ -1,0 +1,141 @@
+name: Test Branch Wheel
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["fix/text-fidelity"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-wheel-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build Windows test wheel
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up build Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          architecture: x64
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install build tools
+        run: python -m pip install "maturin>=1.5,<2.0"
+
+      - name: Build wheel from checked-out source
+        run: python -m maturin build --release --interpreter python --out dist
+
+      - name: Record build provenance
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          import platform
+          from pathlib import Path
+
+          wheels = list(Path("dist").glob("*.whl"))
+          assert len(wheels) == 1, f"Expected one wheel, found {wheels}"
+          wheel = wheels[0]
+          metadata = {
+              "commit": os.environ["GITHUB_SHA"],
+              "ref": os.environ["GITHUB_REF"],
+              "build_python": platform.python_version(),
+              "wheel": wheel.name,
+              "sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+          }
+          Path("dist/build-info.json").write_text(json.dumps(metadata, indent=2), encoding="utf-8")
+          print(json.dumps(metadata, indent=2))
+          PY
+
+      - name: Upload test wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpyxl-test-wheel-windows-x64-${{ github.sha }}
+          path: |
+            dist/*.whl
+            dist/build-info.json
+          if-no-files-found: error
+          retention-days: 14
+
+  test:
+    name: Test Windows wheel (Python ${{ matrix.python }})
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.14"]
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up test Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+
+      - name: Download branch wheel
+        uses: actions/download-artifact@v4
+        with:
+          name: rpyxl-test-wheel-windows-x64-${{ github.sha }}
+          path: dist
+
+      - name: Install wheel and test dependencies
+        run: |
+          python -m pip install "pytest>=7.4.0" "openpyxl>=3.1.2" python-calamine "psutil>=5.9.0" "tabulate>=0.9.0"
+          python - <<'PY'
+          import hashlib
+          import json
+          import subprocess
+          import sys
+          from pathlib import Path
+
+          metadata = json.loads(Path("dist/build-info.json").read_text(encoding="utf-8"))
+          wheel = Path("dist") / metadata["wheel"]
+          assert hashlib.sha256(wheel.read_bytes()).hexdigest() == metadata["sha256"]
+          subprocess.run([
+              sys.executable, "-m", "pip", "install", "--force-reinstall", "--no-deps", str(wheel)
+          ], check=True)
+          PY
+
+      - name: Verify installed package and native extension
+        run: |
+          python -m pip show rpyxl
+          python -c "import sys, rpyxl, rpyxl._core; print(sys.version); print('Package:', rpyxl.__file__); print('Native extension:', rpyxl._core.__file__); print('Version:', rpyxl.__version__)"
+
+      - name: Run regression suite
+        run: |
+          mkdir -p test-results
+          python -m pytest tests/unit tests/compatibility tests/integration -v --junitxml=test-results/pytest.xml 2>&1 | tee test-results/pytest.log
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpyxl-windows-tests-python-${{ matrix.python }}-${{ github.sha }}
+          path: test-results/
+          if-no-files-found: warn
+          retention-days: 14

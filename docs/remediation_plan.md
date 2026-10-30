@@ -4,7 +4,30 @@
 
 This plan responds to a user-reported comparison of **rpyxl 0.1.1 against openpyxl on Windows with Python 3.14**. The reported probes have not been rerun for this document. Findings below describe that report, not verified behavior of the current source tree. The repository's `pyproject.toml` declares version 0.1.1 and lists Python classifiers through 3.13; Python 3.14 compatibility must be tested explicitly rather than inferred from packaging.
 
-Work proceeds one milestone at a time, starting with data fidelity. The first implementation changes and regression tests address XML text trimming, literal line-ending normalization, and carriage-return serialization. They are not considered validated until the native extension is rebuilt and the relevant tests pass. No milestone below is complete yet.
+Implementation is being kept on `fix/text-fidelity`; no release is authorized by this plan. At the user's request, runtime testing is deferred until the implementation phase is complete. New regression tests are prepared but have not been run against a rebuilt native extension. No milestone below is considered validated or complete yet.
+
+## Current implementation status — unverified
+
+| Area                        | Implemented source changes                                                                                                               | Remaining boundaries                                                                                                                  |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Text fidelity               | Whitespace preservation, XML newline normalization, CR escaping                                                                          | Empty/absent cells and broader OOXML escape sequences still need acceptance coverage                                                  |
+| Temporal values and formats | Date/datetime/time ISO conversion, fractional seconds, millisecond serial rounding, 1900/1904 epoch reads, number-format persistence     | Elapsed durations remain numeric; locale-specific built-in format codes and write-only custom formats are limited                     |
+| File-like I/O               | Binary stream loading/saving, caller ownership and input-position preservation, output replacement/truncation, read-only buffer lifetime | Output requires seek/write/truncate; inputs are buffered, not zero-copy streaming                                                     |
+| Cell styles                 | Font/fill/border/alignment/protection models and style-table overlay                                                                     | Full openpyxl style API and all advanced theme/style references are not covered                                                       |
+| Worksheet metadata          | Merges, dimensions, freeze panes, filters, visibility, tab color, protection, page setup                                                 | Full merged-border propagation is not implemented                                                                                     |
+| Worksheet edits             | Sparse insert/delete rows/columns and move_range with metadata movement                                                                  | Formula translation and edits involving reference-bearing features are explicitly rejected                                            |
+| Workbook features           | Properties, defined names, comments, hyperlinks, validations, conditional formatting, tables, basic bar/column charts                    | No formula calculation, threaded comments, new-image API, or general editable chart support; unknown XML is best-effort, not lossless |
+| GIL handling                | Detached native parsing/saving, single-cell reads, and row-channel waits                                                                 | Thread speedup is not verified; Python metadata work still has costs                                                                  |
+| Regression preparation      | Text matrix, rich-feature cross-library comparisons, stream lifetime/truncation and functional threading tests                           | Tests have not been executed in this implementation phase                                                                             |
+
+### Architecture and performance caveats
+
+- Cell values stay in the Rust engine. Python wrappers hold sparse rich-feature metadata; this is not an openpyxl backend and adds no runtime dependency on openpyxl.
+- `workbook.py` and `worksheet.py` become packages to support their public feature submodule import paths. `Native*` exports are available for callers intentionally using unwrapped native types.
+- New value-only workbooks retain the direct Rust save path. Loaded editable workbooks and books using rich metadata need an extra ZIP/XML overlay pass. Original performance figures do not establish performance of this branch.
+- Metadata worksheet parsing discards value/formula payloads during parsing, but input bytes, retained metadata, and dependency parts still consume memory. Read-only value iteration avoids loading rich metadata; first metadata access loads it for all sheets with a warning.
+- Unknown package parts are retained only on a best-effort basis. Reference-sensitive operations are rejected where correct rewriting is not implemented. Do not advertise full drop-in compatibility before acceptance testing.
+- No testing or publication results are implied by successful syntax/format checks.
 
 | Reported observation                                                             | Planning implication                                                                                                                                |
 | -------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -27,7 +50,7 @@ Every milestone below includes reproduction, permanent regressions, and acceptan
 - [ ] Recover the original 44 probes, input workbooks, raw interoperability results, feature checks, and performance logs. If unavailable, label replacement probes as reconstructed rather than exact reproductions.
 - [ ] Record Windows build, CPU/core count, RAM, Python version/build and architecture, rpyxl wheel or source revision/build profile, openpyxl version, dependency versions, commands, and fixture hashes. Reproduce on Windows/Python 3.14 first; track other supported platforms and Python versions separately.
 - [ ] Assign stable case IDs and distinguish pass, fail, unsupported, skipped, and harness error. Preserve exception types/messages and expected versus actual values/types. Unsupported or skipped cases must not count as passes.
-- [ ] Store minimal deterministic fixtures and machine-readable outcomes alongside regression tests. Use `tests/compatibility`, `tests/integration`, and `tests/unit` according to test scope; proposed tests are not yet implemented by this plan.
+- [ ] Store minimal deterministic fixtures and machine-readable outcomes alongside regression tests. Use `tests/compatibility`, `tests/integration`, and `tests/unit` according to test scope; new scoped regressions are prepared, while the complete original harness still needs to be recovered.
 
 ### Required writer-reader matrix
 

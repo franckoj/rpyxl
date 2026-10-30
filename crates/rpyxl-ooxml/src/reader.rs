@@ -4,6 +4,7 @@ use std::io::{BufReader, Read, Seek};
 use std::path::Path;
 use std::sync::Arc;
 
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use quick_xml::events::Event;
 use quick_xml::reader::Reader;
 use zip::ZipArchive;
@@ -120,7 +121,8 @@ impl<R: Read + Seek> XlsxPackage<R> {
         let rels_map = parse_relationships(&mut archive, &rels_path).unwrap_or_default();
 
         // 3. Parse xl/workbook.xml for sheets list & active sheet
-        let (sheet_metas, active_idx) = parse_workbook_xml(&mut archive, &workbook_path)?;
+        let (sheet_metas, active_idx, date_1904) =
+            parse_workbook_xml(&mut archive, &workbook_path)?;
 
         // Resolve target paths and peek dimensions for each sheet
         let base_dir = get_base_dir(&workbook_path);
@@ -160,7 +162,7 @@ impl<R: Read + Seek> XlsxPackage<R> {
         };
 
         // 5. Parse styles.xml if present
-        let styles = if let Some(styles_target) = find_rel_target(&rels_map, "styles") {
+        let mut styles = if let Some(styles_target) = find_rel_target(&rels_map, "styles") {
             let full_styles_path = normalize_zip_path(&base_dir, &styles_target);
             match archive.by_name(&full_styles_path) {
                 Ok(file) => Styles::from_reader(file)?,
@@ -172,6 +174,8 @@ impl<R: Read + Seek> XlsxPackage<R> {
                 Err(_) => Styles::default(),
             }
         };
+
+        styles.date_1904 = date_1904;
 
         Ok(Self {
             archive,
@@ -191,6 +195,7 @@ impl<R: Read + Seek> XlsxPackage<R> {
     /// Read all sheets into an in-memory Workbook
     pub fn to_workbook(&mut self) -> RpyxlResult<Workbook> {
         let mut wb = Workbook::with_options(self.data_only, self.read_only);
+        wb.date_1904 = self.styles.date_1904;
 
         for sheet_info in &self.sheets {
             let mut ws = Worksheet::new(&sheet_info.name)?;
@@ -395,7 +400,7 @@ struct RawSheetMeta {
 fn parse_workbook_xml<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     workbook_path: &str,
-) -> RpyxlResult<(Vec<RawSheetMeta>, usize)> {
+) -> RpyxlResult<(Vec<RawSheetMeta>, usize, bool)> {
     let file = archive
         .by_name(workbook_path)
         .map_err(|e| RpyxlError::IoError(format!("Cannot open {}: {}", workbook_path, e)))?;
@@ -404,6 +409,7 @@ fn parse_workbook_xml<R: Read + Seek>(
     let mut buf = Vec::new();
     let mut sheets = Vec::new();
     let mut active_tab = 0;
+    let mut date_1904 = false;
 
     loop {
         match reader.read_event_into(&mut buf) {
@@ -438,6 +444,13 @@ fn parse_workbook_xml<R: Read + Seek>(
                         });
                     }
                 }
+                b"workbookPr" => {
+                    for attr in e.attributes().flatten() {
+                        if attr.key.local_name().as_ref() == b"date1904" {
+                            date_1904 = matches!(attr.value.as_ref(), b"1" | b"true");
+                        }
+                    }
+                }
                 b"workbookView" => {
                     for attr in e.attributes().flatten() {
                         if attr.key.local_name().as_ref() == b"activeTab" {
@@ -456,7 +469,7 @@ fn parse_workbook_xml<R: Read + Seek>(
         buf.clear();
     }
 
-    Ok((sheets, active_tab))
+    Ok((sheets, active_tab, date_1904))
 }
 
 fn find_rel_target(rels_map: &HashMap<String, String>, keyword: &str) -> Option<String> {
@@ -542,6 +555,27 @@ pub fn parse_worksheet_into<R: Read>(
                 b"t" => in_is_t = true,
                 _ => {}
             },
+            Ok(Event::Empty(ref e)) if e.local_name().as_ref() == b"c" => {
+                let mut coord = None;
+                let mut style = 0;
+                for attr in e.attributes().flatten() {
+                    match attr.key.local_name().as_ref() {
+                        b"r" => coord = std::str::from_utf8(&attr.value).ok().map(str::to_owned),
+                        b"s" => {
+                            style = std::str::from_utf8(&attr.value)
+                                .ok()
+                                .and_then(|v| v.parse::<usize>().ok())
+                                .unwrap_or(0)
+                        }
+                        _ => {}
+                    }
+                }
+                if let Some((row, col)) = coord.as_deref().and_then(|c| coordinate_to_tuple(c).ok())
+                {
+                    let cell = ws.set_cell_value(row, col, CellValue::Empty)?;
+                    cell.number_format = styles.number_format(style).map(str::to_owned);
+                }
+            }
             Ok(Event::Text(ref e)) => {
                 if in_v {
                     let txt = decode_xml_text(e, xml_reader.decoder())?;
@@ -569,7 +603,19 @@ pub fn parse_worksheet_into<R: Read>(
                             styles,
                             data_only,
                         );
-                        let _ = ws.set_cell_value(row, col, cell_value);
+                        ws.set_cell_value(row, col, cell_value)?;
+                        if let Some(cell) = ws.get_cell_mut(row, col) {
+                            let temporal = matches!(
+                                cell.value.resolve_value(true),
+                                Some(CellValue::Date(_) | CellValue::DateTime(_))
+                            );
+                            if let Some(code) = styles
+                                .number_format(current_style)
+                                .filter(|code| !temporal || !code.eq_ignore_ascii_case("General"))
+                            {
+                                cell.number_format = Some(code.to_owned());
+                            }
+                        }
                     }
                 }
                 _ => {}
@@ -726,6 +772,22 @@ pub fn parse_worksheet_streaming<R: Read>(
     Ok(rows)
 }
 
+fn parse_iso_temporal(value: &str) -> CellValue {
+    if value.is_empty() {
+        CellValue::Empty
+    } else if NaiveDate::parse_from_str(value, "%Y-%m-%d").is_ok() {
+        CellValue::Date(value.to_string())
+    } else if NaiveTime::parse_from_str(value, "%H:%M:%S%.f").is_ok()
+        || NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S%.f").is_ok()
+        || NaiveDateTime::parse_from_str(value, "%Y-%m-%d %H:%M:%S%.f").is_ok()
+    {
+        CellValue::DateTime(value.to_string())
+    } else {
+        // Do not label malformed or timezone-aware text as a naive temporal value.
+        CellValue::String(value.to_string())
+    }
+}
+
 fn resolve_cell_value(
     t_attr: &str,
     style_idx: usize,
@@ -754,18 +816,16 @@ fn resolve_cell_value(
         CellValue::Bool(val_text == "1" || val_text.eq_ignore_ascii_case("true"))
     } else if t_attr == "inlineStr" || t_attr == "str" || t_attr == "e" {
         CellValue::String(val_text.to_string())
+    } else if t_attr == "d" {
+        parse_iso_temporal(val_text)
     } else if val_text.is_empty() {
         CellValue::Empty
     } else {
         // Number or Date
-        if styles.is_date_format(style_idx) {
+        if styles.is_date_format(style_idx) && !styles.is_duration_format(style_idx) {
             if let Ok(serial) = val_text.parse::<f64>() {
-                if let Some(date_str) = Styles::excel_to_date_string(serial) {
-                    if date_str.contains(' ') || date_str.contains(':') {
-                        CellValue::DateTime(date_str)
-                    } else {
-                        CellValue::Date(date_str)
-                    }
+                if let Some(date_str) = styles.date_string_for_style(serial, style_idx) {
+                    CellValue::DateTime(date_str)
                 } else {
                     parse_numeric_or_string(val_text)
                 }
@@ -1103,5 +1163,113 @@ fn parse_numeric_or_string(txt: &str) -> CellValue {
         CellValue::Float(f)
     } else {
         CellValue::String(txt.to_string())
+    }
+}
+
+#[cfg(test)]
+mod temporal_format_tests {
+    use super::*;
+
+    #[test]
+    fn test_numeric_date_style_midnight_is_datetime() {
+        let mut styles = Styles::from_reader(
+            &br#"<styleSheet><numFmts><numFmt numFmtId="164" formatCode="yyyy-mm-dd"/></numFmts><cellXfs><xf numFmtId="164"/></cellXfs></styleSheet>"#[..],
+        ).unwrap();
+        let shared = SharedStringsTable::default();
+        let xml = br#"<worksheet><sheetData><row r="1"><c r="A1" s="0"><v>1</v></c><c r="B1" s="0"><v>-1</v></c><c r="C1" s="0"><v>0</v></c><c r="D1" s="0"><v>0.5</v></c><c r="E1" s="0" t="d"><v>2023-01-01</v></c></row></sheetData></worksheet>"#;
+        for date_1904 in [false, true] {
+            styles.date_1904 = date_1904;
+            let mut ws = Worksheet::new("Sheet").unwrap();
+            parse_worksheet_into(&xml[..], &mut ws, &shared, &styles, false).unwrap();
+            let expected = [
+                CellValue::DateTime(
+                    if date_1904 {
+                        "1904-01-02 00:00:00"
+                    } else {
+                        "1900-01-01 00:00:00"
+                    }
+                    .into(),
+                ),
+                CellValue::DateTime(
+                    if date_1904 {
+                        "1903-12-31 00:00:00"
+                    } else {
+                        "1899-12-29 00:00:00"
+                    }
+                    .into(),
+                ),
+                CellValue::DateTime("00:00:00".into()),
+                CellValue::DateTime("12:00:00".into()),
+                CellValue::Date("2023-01-01".into()),
+            ];
+            let rows = parse_worksheet_streaming(
+                &xml[..],
+                &shared,
+                &styles,
+                None,
+                None,
+                None,
+                None,
+                false,
+            )
+            .unwrap();
+            for (idx, value) in expected.iter().enumerate() {
+                let col = idx as u32 + 1;
+                assert_eq!(&ws.get_cell_value(1, col), value);
+                assert_eq!(
+                    &read_single_cell(&xml[..], 1, col, &shared, &styles, false).unwrap(),
+                    value
+                );
+                assert_eq!(&rows[0][idx].2, value);
+            }
+            assert_eq!(
+                ws.cells().get(&(1, 1)).unwrap().number_format.as_deref(),
+                Some("yyyy-mm-dd")
+            );
+        }
+    }
+
+    #[test]
+    fn test_iso_temporals_with_general_style() {
+        let styles = Styles::from_reader(
+            &br#"<styleSheet><cellXfs><xf numFmtId="0"/></cellXfs></styleSheet>"#[..],
+        )
+        .unwrap();
+        let shared = SharedStringsTable::default();
+        let xml = br#"<worksheet><sheetData><row r="1"><c r="A1" t="d"><v>2023-01-01</v></c><c r="B1" t="d"><v>2023-01-01T00:00:00</v></c><c r="C1" t="d"><v>12:34:56.123</v></c><c r="D1"><v>42</v></c></row></sheetData></worksheet>"#;
+        let mut ws = Worksheet::new("Sheet").unwrap();
+        parse_worksheet_into(&xml[..], &mut ws, &shared, &styles, false).unwrap();
+        assert_eq!(
+            ws.get_cell_value(1, 1),
+            CellValue::Date("2023-01-01".into())
+        );
+        assert_eq!(
+            ws.get_cell_value(1, 2),
+            CellValue::DateTime("2023-01-01T00:00:00".into())
+        );
+        assert_eq!(
+            ws.get_cell_value(1, 3),
+            CellValue::DateTime("12:34:56.123".into())
+        );
+        for col in 1..=3 {
+            assert_ne!(
+                ws.cells().get(&(1, col)).unwrap().number_format.as_deref(),
+                Some("General")
+            );
+            let value = read_single_cell(&xml[..], 1, col, &shared, &styles, false).unwrap();
+            assert_eq!(value, ws.get_cell_value(1, col));
+        }
+        assert_eq!(
+            ws.cells().get(&(1, 4)).unwrap().number_format.as_deref(),
+            Some("General")
+        );
+        assert_eq!(
+            parse_iso_temporal("2023-02-30"),
+            CellValue::String("2023-02-30".into())
+        );
+        assert_eq!(
+            parse_iso_temporal("25:00:00"),
+            CellValue::String("25:00:00".into())
+        );
     }
 }
