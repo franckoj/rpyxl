@@ -93,7 +93,9 @@ fn scalar_xml_whitespace_is_still_accepted() {
         ("n", " 42 ", CellValue::Int(42)),
         ("b", " 1 ", CellValue::Bool(true)),
     ] {
-        let xml = format!("<worksheet><sheetData><row r="1"><c r="A1" t="{kind}"><v>{encoded}</v></c></row></sheetData></worksheet>");
+        let xml = format!(
+            r#"<worksheet><sheetData><row r="1"><c r="A1" t="{kind}"><v>{encoded}</v></c></row></sheetData></worksheet>"#
+        );
         assert_eq!(
             read_single_cell(xml.as_bytes(), 1, 1, &shared, &styles, false).unwrap(),
             expected
