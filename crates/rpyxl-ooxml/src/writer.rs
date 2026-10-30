@@ -1,10 +1,15 @@
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufWriter, Seek, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime, Timelike};
+use quick_xml::events::Event;
+use quick_xml::name::ResolveResult;
+use quick_xml::NsReader;
 use rayon::prelude::*;
-use rpyxl_core::cell::CellValue;
+use rpyxl_core::cell::{Cell, CellValue, RichStyle};
 use rpyxl_core::coordinate::{tuple_to_coordinate, write_coordinate};
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
 use rpyxl_core::workbook::Workbook;
@@ -16,22 +21,23 @@ use zip::ZipWriter;
 use crate::styles::is_date_format_code;
 
 pub fn save_workbook<P: AsRef<Path>>(path: P, wb: &Workbook) -> RpyxlResult<()> {
+    let styles = StyleTables::for_workbook(wb)?;
     let file = File::create(path.as_ref())
         .map_err(|e| RpyxlError::IoError(format!("Failed to create file: {}", e)))?;
     let writer = BufWriter::new(file);
-    write_workbook(writer, wb)
+    write_workbook_with_styles(writer, wb, &styles)
 }
 
 pub fn write_workbook<W: Write + Seek>(writer: W, wb: &Workbook) -> RpyxlResult<()> {
-    let mut formats = default_number_formats();
-    for ws in wb.sheets() {
-        for cell in ws.cells().values() {
-            let code = effective_number_format(&cell.value, cell.number_format.as_deref());
-            if !formats.iter().any(|format| format == code) {
-                formats.push(code.to_string());
-            }
-        }
-    }
+    let styles = StyleTables::for_workbook(wb)?;
+    write_workbook_with_styles(writer, wb, &styles)
+}
+
+fn write_workbook_with_styles<W: Write + Seek>(
+    writer: W,
+    wb: &Workbook,
+    styles: &StyleTables,
+) -> RpyxlResult<()> {
     let mut zip = ZipWriter::new(writer);
     let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
 
@@ -65,7 +71,7 @@ pub fn write_workbook<W: Write + Seek>(writer: W, wb: &Workbook) -> RpyxlResult<
     // 5. xl/styles.xml
     zip.start_file("xl/styles.xml", options)
         .map_err(|e| RpyxlError::IoError(format!("Zip error: {}", e)))?;
-    zip.write_all(generate_styles_xml(&formats).as_bytes())
+    zip.write_all(styles.to_xml().as_bytes())
         .map_err(|e| RpyxlError::IoError(format!("Write error: {}", e)))?;
 
     // 6. Worksheets (parallel serialization via Rayon if multi-sheet)
@@ -78,12 +84,12 @@ pub fn write_workbook<W: Write + Seek>(writer: W, wb: &Workbook) -> RpyxlResult<
     let sheet_xmls: Vec<RpyxlResult<String>> = if sheets.len() > 1 {
         sheets
             .par_iter()
-            .map(|ws| generate_worksheet_xml(ws, &formats, wb.date_1904))
+            .map(|ws| generate_worksheet_xml(ws, styles, wb.date_1904))
             .collect()
     } else {
         sheets
             .iter()
-            .map(|ws| generate_worksheet_xml(ws, &formats, wb.date_1904))
+            .map(|ws| generate_worksheet_xml(ws, styles, wb.date_1904))
             .collect()
     };
 
@@ -345,24 +351,384 @@ pub fn effective_number_format<'a>(value: &CellValue, number_format: Option<&'a 
 }
 
 fn generate_styles_xml(formats: &[String]) -> String {
-    let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
-    xml.push_str(&format!("<numFmts count=\"{}\">", formats.len() - 1));
-    for (idx, code) in formats.iter().enumerate().skip(1) {
-        xml.push_str(&format!("<numFmt numFmtId=\"{}\" formatCode=\"", 163 + idx));
-        // Attribute whitespace must use character references to survive XML normalization.
-        let mut escaped = String::new();
-        write_xml_escaped(code, &mut escaped);
-        xml.push_str(&escaped.replace('\n', "&#10;").replace('\t', "&#9;"));
-        xml.push_str("\"/>");
+    StyleTables::new(formats.to_vec()).to_xml()
+}
+
+const SPREADSHEET_NS: &[u8] = b"http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+fn is_xml_character(c: char) -> bool {
+    matches!(c, '\t' | '\n' | '\r' | '\u{20}'..='\u{d7ff}' | '\u{e000}'..='\u{fffd}' | '\u{10000}'..='\u{10ffff}')
+}
+
+fn is_xml_qname(name: &[u8]) -> bool {
+    let Ok(name) = std::str::from_utf8(name) else {
+        return false;
+    };
+    let start = |c: char| matches!(c, 'A'..='Z' | '_' | 'a'..='z' | '\u{c0}'..='\u{d6}' | '\u{d8}'..='\u{f6}' | '\u{f8}'..='\u{2ff}' | '\u{370}'..='\u{37d}' | '\u{37f}'..='\u{1fff}' | '\u{200c}'..='\u{200d}' | '\u{2070}'..='\u{218f}' | '\u{2c00}'..='\u{2fef}' | '\u{3001}'..='\u{d7ff}' | '\u{f900}'..='\u{fdcf}' | '\u{fdf0}'..='\u{fffd}' | '\u{10000}'..='\u{effff}');
+    let mut parts = name.split(':');
+    let valid_part = |part: &str| {
+        let mut chars = part.chars();
+        chars.next().is_some_and(start)
+            && chars.all(|c| start(c) || matches!(c, '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}'))
+    };
+    valid_part(parts.next().unwrap_or_default())
+        && parts.next().map_or(true, valid_part)
+        && parts.next().is_none()
+}
+
+fn validate_style_fragment(fragment: &str, expected: &str) -> RpyxlResult<()> {
+    let invalid = || RpyxlError::ValueError(format!("Invalid rich-style {expected} fragment"));
+    if !fragment.chars().all(is_xml_character) {
+        return Err(invalid());
     }
-    xml.push_str("</numFmts><fonts count=\"1\"><font><name val=\"Calibri\"/><family val=\"2\"/><sz val=\"11\"/></font></fonts><fills count=\"2\"><fill><patternFill patternType=\"none\"/></fill><fill><patternFill patternType=\"gray125\"/></fill></fills><borders count=\"1\"><border><left/><right/><top/><bottom/><diagonal/></border></borders><cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
-    xml.push_str(&format!("<cellXfs count=\"{}\">", formats.len()));
-    for idx in 0..formats.len() {
-        let id = if idx == 0 { 0 } else { 163 + idx };
-        xml.push_str(&format!("<xf numFmtId=\"{id}\" fontId=\"0\" fillId=\"0\" borderId=\"0\" xfId=\"0\" applyNumberFormat=\"1\"/>"));
+    // Validate in the same default namespace as styles.xml: an omitted namespace
+    // inherits SpreadsheetML, whereas an explicit xmlns="" must not do so.
+    let wrapped = format!(
+        "<rpyxl-style-fragment xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">{fragment}</rpyxl-style-fragment>"
+    );
+    let mut reader = NsReader::from_str(&wrapped);
+    reader.config_mut().check_comments = true;
+    reader.read_resolved_event().map_err(|_| invalid())?;
+
+    #[derive(Clone, Copy, PartialEq)]
+    enum Context {
+        Standard,
+        ExtensionList,
+        ExtensionPayload,
     }
-    xml.push_str("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>");
-    xml
+    let mut contexts = vec![Context::Standard];
+    let mut seen_root = false;
+    loop {
+        let decoder = reader.decoder();
+        let (namespace, event) = reader.read_resolved_event().map_err(|_| invalid())?;
+        match event {
+            Event::Start(ref element) | Event::Empty(ref element) => {
+                if matches!(namespace, ResolveResult::Unknown(_))
+                    || !is_xml_qname(element.name().as_ref())
+                {
+                    return Err(invalid());
+                }
+                let spreadsheet =
+                    matches!(namespace, ResolveResult::Bound(ns) if ns.as_ref() == SPREADSHEET_NS);
+                let parent = *contexts.last().ok_or_else(invalid)?;
+                if parent != Context::ExtensionPayload && !spreadsheet {
+                    return Err(invalid());
+                }
+                let local_name = element.local_name();
+                if contexts.len() == 1 {
+                    if seen_root || local_name.as_ref() != expected.as_bytes() {
+                        return Err(invalid());
+                    }
+                    seen_root = true;
+                }
+                let context = match parent {
+                    Context::ExtensionPayload => Context::ExtensionPayload,
+                    Context::ExtensionList => {
+                        if local_name.as_ref() != b"ext" {
+                            return Err(invalid());
+                        }
+                        Context::ExtensionPayload
+                    }
+                    Context::Standard if local_name.as_ref() == b"extLst" => Context::ExtensionList,
+                    Context::Standard => Context::Standard,
+                };
+                for attribute in element.attributes() {
+                    let attribute = attribute.map_err(|_| invalid())?;
+                    if !is_xml_qname(attribute.key.as_ref())
+                        || attribute.value.contains(&b'<')
+                        || (attribute.key.as_ref() != b"xmlns"
+                            && !attribute.key.as_ref().starts_with(b"xmlns:")
+                            && matches!(
+                                reader.resolve_attribute(attribute.key).0,
+                                ResolveResult::Unknown(_)
+                            ))
+                    {
+                        return Err(invalid());
+                    }
+                    let value = attribute
+                        .decode_and_unescape_value(decoder)
+                        .map_err(|_| invalid())?;
+                    if !value.chars().all(is_xml_character) {
+                        return Err(invalid());
+                    }
+                }
+                if matches!(event, Event::Start(_)) {
+                    contexts.push(context);
+                }
+            }
+            Event::End(_) => {
+                contexts.pop().ok_or_else(invalid)?;
+                // Only the synthetic closing tag may close the wrapper.
+                if contexts.is_empty() && reader.buffer_position() != wrapped.len() as u64 {
+                    return Err(invalid());
+                }
+            }
+            Event::Text(text) => {
+                if text.as_ref().windows(3).any(|bytes| bytes == b"]]>") {
+                    return Err(invalid());
+                }
+                let text = text.unescape().map_err(|_| invalid())?;
+                if !text.chars().all(is_xml_character)
+                    || (contexts.last() != Some(&Context::ExtensionPayload)
+                        && !text.chars().all(|c| matches!(c, ' ' | '\t' | '\r' | '\n')))
+                {
+                    return Err(invalid());
+                }
+            }
+            Event::CData(text) if contexts.last() == Some(&Context::ExtensionPayload) => {
+                let text = decoder.decode(text.as_ref()).map_err(|_| invalid())?;
+                if !text.chars().all(is_xml_character) {
+                    return Err(invalid());
+                }
+            }
+            Event::Eof if seen_root && contexts.is_empty() => return Ok(()),
+            // Prologs, DTDs and processing instructions are never allowed, even
+            // inside extension payloads. Comments are ordinary XML content.
+            Event::Comment(_) => {}
+            _ => return Err(invalid()),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ComponentTable {
+    values: Vec<String>,
+    ids: HashMap<String, usize>,
+}
+
+impl ComponentTable {
+    fn intern(&mut self, fragment: &str, root: &str) -> RpyxlResult<usize> {
+        if let Some(&id) = self.ids.get(fragment) {
+            return Ok(id);
+        }
+        validate_style_fragment(fragment, root)?;
+        let id = self.values.len();
+        self.values.push(fragment.to_owned());
+        self.ids.insert(fragment.to_owned(), id);
+        Ok(id)
+    }
+
+    fn write_xml(&self, root: &str, xml: &mut String) {
+        xml.push_str(&format!("<{root} count=\"{}\">", self.values.len()));
+        for fragment in &self.values {
+            xml.push_str(fragment);
+        }
+        xml.push_str(&format!("</{root}>"));
+    }
+}
+
+#[derive(Clone, Default, PartialEq, Eq, Hash)]
+struct RichComponents {
+    font: usize,
+    fill: usize,
+    border: usize,
+    alignment: Option<usize>,
+    protection: Option<usize>,
+}
+
+struct StyleTables {
+    formats: Vec<String>,
+    format_ids: HashMap<String, usize>,
+    fonts: ComponentTable,
+    fills: ComponentTable,
+    borders: ComponentTable,
+    alignments: ComponentTable,
+    protections: ComponentTable,
+    rich: Vec<RichComponents>,
+    // Pointer lookup avoids hashing shared XML strings for every cell.
+    rich_pointers: HashMap<usize, usize>,
+    xfs: Vec<(usize, usize)>,
+    xf_ids: HashMap<(usize, usize), usize>,
+}
+
+impl StyleTables {
+    fn new(formats: Vec<String>) -> Self {
+        let mut tables = Self {
+            format_ids: formats
+                .iter()
+                .enumerate()
+                .map(|(i, s)| (s.clone(), i))
+                .collect(),
+            xfs: (0..formats.len()).map(|i| (i, 0)).collect(),
+            xf_ids: (0..formats.len()).map(|i| ((i, 0), i)).collect(),
+            formats,
+            fonts: ComponentTable::default(),
+            fills: ComponentTable::default(),
+            borders: ComponentTable::default(),
+            alignments: ComponentTable::default(),
+            protections: ComponentTable::default(),
+            rich: vec![RichComponents::default()],
+            rich_pointers: HashMap::new(),
+        };
+        tables
+            .fonts
+            .intern(
+                "<font><name val=\"Calibri\"/><family val=\"2\"/><sz val=\"11\"/></font>",
+                "font",
+            )
+            .expect("valid default font");
+        tables
+            .fills
+            .intern("<fill><patternFill patternType=\"none\"/></fill>", "fill")
+            .expect("valid default fill");
+        tables
+            .fills
+            .intern(
+                "<fill><patternFill patternType=\"gray125\"/></fill>",
+                "fill",
+            )
+            .expect("valid default fill");
+        tables
+            .borders
+            .intern(
+                "<border><left/><right/><top/><bottom/><diagonal/></border>",
+                "border",
+            )
+            .expect("valid default border");
+        tables
+    }
+
+    fn for_workbook(wb: &Workbook) -> RpyxlResult<Self> {
+        let mut tables = Self::new(default_number_formats());
+        let mut rich_ids: HashMap<Arc<RichStyle>, usize> = HashMap::new();
+        // Keep explicit rich defaults separate from an unstyled cell, but merge
+        // rich styles whose optional components resolve to the same table IDs.
+        let mut component_ids: HashMap<RichComponents, usize> = HashMap::new();
+        for ws in wb.sheets() {
+            for cell in ws.cells().values() {
+                let rich_id = if let Some(style) = &cell.rich_style {
+                    let pointer = Arc::as_ptr(style) as usize;
+                    if let Some(&id) = tables.rich_pointers.get(&pointer) {
+                        id
+                    } else {
+                        let id = if let Some(&id) = rich_ids.get(style) {
+                            id
+                        } else {
+                            let components = RichComponents {
+                                font: style
+                                    .font
+                                    .as_deref()
+                                    .map(|s| tables.fonts.intern(s, "font"))
+                                    .transpose()?
+                                    .unwrap_or(0),
+                                fill: style
+                                    .fill
+                                    .as_deref()
+                                    .map(|s| tables.fills.intern(s, "fill"))
+                                    .transpose()?
+                                    .unwrap_or(0),
+                                border: style
+                                    .border
+                                    .as_deref()
+                                    .map(|s| tables.borders.intern(s, "border"))
+                                    .transpose()?
+                                    .unwrap_or(0),
+                                alignment: style
+                                    .alignment
+                                    .as_deref()
+                                    .map(|s| tables.alignments.intern(s, "alignment"))
+                                    .transpose()?,
+                                protection: style
+                                    .protection
+                                    .as_deref()
+                                    .map(|s| tables.protections.intern(s, "protection"))
+                                    .transpose()?,
+                            };
+                            let id =
+                                *component_ids.entry(components.clone()).or_insert_with(|| {
+                                    let id = tables.rich.len();
+                                    tables.rich.push(components);
+                                    id
+                                });
+                            rich_ids.insert(Arc::clone(style), id);
+                            id
+                        };
+                        tables.rich_pointers.insert(pointer, id);
+                        id
+                    }
+                } else {
+                    0
+                };
+                let code = effective_number_format(&cell.value, cell.number_format.as_deref());
+                let format_id = if let Some(&id) = tables.format_ids.get(code) {
+                    id
+                } else {
+                    let id = tables.formats.len();
+                    tables.formats.push(code.to_owned());
+                    tables.format_ids.insert(code.to_owned(), id);
+                    id
+                };
+                let next_xf = tables.xfs.len();
+                tables
+                    .xf_ids
+                    .entry((format_id, rich_id))
+                    .or_insert_with(|| {
+                        tables.xfs.push((format_id, rich_id));
+                        next_xf
+                    });
+            }
+        }
+        Ok(tables)
+    }
+
+    fn cell_style(&self, cell: &Cell) -> usize {
+        let code = effective_number_format(&cell.value, cell.number_format.as_deref());
+        let format_id = self.format_ids[code];
+        let rich_id = cell
+            .rich_style
+            .as_ref()
+            .map(|style| self.rich_pointers[&(Arc::as_ptr(style) as usize)])
+            .unwrap_or(0);
+        self.xf_ids[&(format_id, rich_id)]
+    }
+
+    fn to_xml(&self) -> String {
+        let formats = &self.formats;
+        let mut xml = String::from("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n<styleSheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\">");
+        xml.push_str(&format!("<numFmts count=\"{}\">", formats.len() - 1));
+        for (idx, code) in formats.iter().enumerate().skip(1) {
+            xml.push_str(&format!("<numFmt numFmtId=\"{}\" formatCode=\"", 163 + idx));
+            // Attribute whitespace must use character references to survive XML normalization.
+            let mut escaped = String::new();
+            write_xml_escaped(code, &mut escaped);
+            xml.push_str(&escaped.replace('\n', "&#10;").replace('\t', "&#9;"));
+            xml.push_str("\"/>");
+        }
+        xml.push_str("</numFmts>");
+        self.fonts.write_xml("fonts", &mut xml);
+        self.fills.write_xml("fills", &mut xml);
+        self.borders.write_xml("borders", &mut xml);
+        xml.push_str("<cellStyleXfs count=\"1\"><xf numFmtId=\"0\" fontId=\"0\" fillId=\"0\" borderId=\"0\"/></cellStyleXfs>");
+        xml.push_str(&format!("<cellXfs count=\"{}\">", self.xfs.len()));
+        for &(format, rich) in &self.xfs {
+            let id = if format == 0 { 0 } else { 163 + format };
+            let components = &self.rich[rich];
+            xml.push_str(&format!("<xf numFmtId=\"{id}\" fontId=\"{}\" fillId=\"{}\" borderId=\"{}\" xfId=\"0\" applyNumberFormat=\"1\"", components.font, components.fill, components.border));
+            if rich != 0 {
+                xml.push_str(" applyFont=\"1\" applyFill=\"1\" applyBorder=\"1\"");
+            }
+            if components.alignment.is_some() {
+                xml.push_str(" applyAlignment=\"1\"");
+            }
+            if components.protection.is_some() {
+                xml.push_str(" applyProtection=\"1\"");
+            }
+            if components.alignment.is_none() && components.protection.is_none() {
+                xml.push_str("/>");
+            } else {
+                xml.push('>');
+                if let Some(id) = components.alignment {
+                    xml.push_str(&self.alignments.values[id]);
+                }
+                if let Some(id) = components.protection {
+                    xml.push_str(&self.protections.values[id]);
+                }
+                xml.push_str("</xf>");
+            }
+        }
+        xml.push_str("</cellXfs><cellStyles count=\"1\"><cellStyle name=\"Normal\" xfId=\"0\" builtinId=\"0\"/></cellStyles></styleSheet>");
+        xml
+    }
 }
 
 fn generate_content_types(sheet_count: usize) -> String {
@@ -427,7 +793,7 @@ fn generate_workbook_xml(wb: &Workbook) -> String {
 
 fn generate_worksheet_xml(
     ws: &Worksheet,
-    formats: &[String],
+    styles: &StyleTables,
     date_1904: bool,
 ) -> RpyxlResult<String> {
     let min_r = ws.min_row();
@@ -457,11 +823,7 @@ fn generate_worksheet_xml(
             s.push_str(itoa_buf.format(r));
             s.push_str("\">");
         }
-        let code = effective_number_format(&cell.value, cell.number_format.as_deref());
-        let style = formats
-            .iter()
-            .position(|format| format == code)
-            .unwrap_or(0);
+        let style = styles.cell_style(cell);
         write_cell_styled(r, c, &cell.value, &mut s, style, date_1904);
     }
     if current_row != 0 {

@@ -170,6 +170,12 @@ impl Worksheet {
         self.cells.get_mut(&(row, column))
     }
 
+    pub fn clear_rich_styles(&mut self) {
+        for cell in self.cells.values_mut() {
+            cell.rich_style = None;
+        }
+    }
+
     pub fn set_cell_number_format(
         &mut self,
         row: u32,

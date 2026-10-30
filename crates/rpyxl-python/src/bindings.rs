@@ -8,9 +8,10 @@ use pyo3::exceptions::{PyAttributeError, PyIndexError, PyKeyError, PyTypeError, 
 use pyo3::prelude::*;
 use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PySlice, PyString, PyTuple};
 
-use rpyxl_core::cell::CellValue;
+use rpyxl_core::cell::{CellValue, RichStyle};
 use rpyxl_core::coordinate::{
-    coordinate_to_tuple, get_column_letter, range_boundaries, tuple_to_coordinate,
+    coordinate_to_tuple, get_column_letter, range_boundaries, tuple_to_coordinate, MAX_COLUMN,
+    MAX_ROW,
 };
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
 use rpyxl_core::workbook::Workbook;
@@ -19,6 +20,14 @@ use rpyxl_ooxml::{
     write_write_only_workbook, SharedStringsTable, SheetInfo, StreamingRowReader, Styles,
     WriteOnlySheet, XlsxPackage,
 };
+
+type RichStyleInput = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 pub fn map_rpyxl_err(err: RpyxlError) -> PyErr {
     match err {
@@ -1379,6 +1388,57 @@ impl PyWorkbook {
     ) -> PyResult<bool> {
         self.close()?;
         Ok(false)
+    }
+
+    fn _replace_cell_styles(
+        &self,
+        py: Python<'_>,
+        records: Vec<RichStyleInput>,
+        assignments: Vec<(String, u32, u32, usize)>,
+    ) -> PyResult<()> {
+        let styles: Vec<_> = records
+            .into_iter()
+            .map(|(font, fill, border, alignment, protection)| {
+                Arc::new(RichStyle {
+                    font,
+                    fill,
+                    border,
+                    alignment,
+                    protection,
+                })
+            })
+            .collect();
+        let workbook = Arc::clone(&self.wb);
+        py.allow_threads(move || -> RpyxlResult<()> {
+            let mut wb = workbook.write();
+            // Validate the complete replacement before clearing or creating cells.
+            for (title, row, column, index) in &assignments {
+                if wb.get_sheet(title).is_none() {
+                    return Err(RpyxlError::SheetNotFound(title.clone()));
+                }
+                if !(1..=MAX_ROW).contains(row) {
+                    return Err(RpyxlError::RowOutOfBounds(*row));
+                }
+                if !(1..=MAX_COLUMN).contains(column) {
+                    return Err(RpyxlError::ColumnOutOfBounds(*column));
+                }
+                if *index >= styles.len() {
+                    return Err(RpyxlError::ValueError(
+                        "Invalid rich-style record index".into(),
+                    ));
+                }
+            }
+            for sheet in wb.sheets_mut() {
+                sheet.clear_rich_styles();
+            }
+            for (title, row, column, index) in assignments {
+                let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
+                sheet.get_or_create_cell(row, column)?.rich_style =
+                    Some(Arc::clone(&styles[index]));
+            }
+            Ok(())
+        })
+        .map_err(map_rpyxl_err)
     }
 
     pub fn save(&self, path: &Bound<'_, PyAny>) -> PyResult<()> {

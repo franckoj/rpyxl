@@ -51,6 +51,7 @@ and each input archive is opened once per operation. Caller streams stay open
 and their input positions are restored. Output streams must support seek and
 truncate; source and target may be the same path or stream.
 """
+
 import os
 import posixpath
 import re
@@ -112,9 +113,21 @@ DCT = "http://purl.org/dc/terms/"
 XSI = "http://www.w3.org/2001/XMLSchema-instance"
 EP = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
 VT = "http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes"
-for prefix, uri in (("", S), ("r", R), ("c", C), ("a", A), ("xdr", XDR),
-                    ("v", V), ("o", O), ("x", X), ("cp", CP), ("dc", DC),
-                    ("dcterms", DCT), ("xsi", XSI), ("vt", VT)):
+for prefix, uri in (
+    ("", S),
+    ("r", R),
+    ("c", C),
+    ("a", A),
+    ("xdr", XDR),
+    ("v", V),
+    ("o", O),
+    ("x", X),
+    ("cp", CP),
+    ("dc", DC),
+    ("dcterms", DCT),
+    ("xsi", XSI),
+    ("vt", VT),
+):
     ET.register_namespace(prefix, uri)
 
 MAX_PART_BYTES = 256 * 1024 * 1024
@@ -123,7 +136,7 @@ MAX_MEMBERS = 100000
 
 
 def q(tag, ns=S):
-    return "{%s}%s" % (ns, tag)
+    return f"{{{ns}}}{tag}"
 
 
 def local(node):
@@ -164,24 +177,43 @@ def _worksheet_metadata_xml(data):
                 stack.append(node)
                 if len(stack) == 2 and node.tag == sheet_data_tag:
                     sheet_children = []
-                elif len(stack) == 3 and stack[1].tag == sheet_data_tag and node.tag == row_tag:
+                elif (
+                    len(stack) == 3
+                    and stack[1].tag == sheet_data_tag
+                    and node.tag == row_tag
+                ):
                     row_children = []
-                elif (len(stack) == 4 and stack[1].tag == sheet_data_tag
-                      and stack[2].tag == row_tag and node.tag == cell_tag):
+                elif (
+                    len(stack) == 4
+                    and stack[1].tag == sheet_data_tag
+                    and stack[2].tag == row_tag
+                    and node.tag == cell_tag
+                ):
                     cell = node
                 continue
 
             if cell is not None:
                 if node is cell:
                     if "s" in node.attrib:
-                        row_children.append(ET.Element(cell_tag, {
-                            key: value for key, value in node.attrib.items() if key in ("r", "s")
-                        }))
+                        row_children.append(
+                            ET.Element(
+                                cell_tag,
+                                {
+                                    key: value
+                                    for key, value in node.attrib.items()
+                                    if key in ("r", "s")
+                                },
+                            )
+                        )
                     cell = None
                 # Drop payload descendants as they finish, not just at </c>.
                 stack[-2].remove(node)
                 node.clear()
-            elif len(stack) == 4 and stack[1].tag == sheet_data_tag and stack[2].tag == row_tag:
+            elif (
+                len(stack) == 4
+                and stack[1].tag == sheet_data_tag
+                and stack[2].tag == row_tag
+            ):
                 # Preserve unknown non-cell row children, including extensions.
                 stack[-2].remove(node)
                 row_children.append(node)
@@ -190,8 +222,11 @@ def _worksheet_metadata_xml(data):
                 if node.tag == row_tag:
                     node.extend(row_children)
                     row_children = []
-                    if not (len(node) or any(key != "r" for key in node.attrib)
-                            or (node.text and node.text.strip())):
+                    if not (
+                        len(node)
+                        or any(key != "r" for key in node.attrib)
+                        or (node.text and node.text.strip())
+                    ):
                         node.clear()
                         stack.pop()
                         continue
@@ -207,7 +242,9 @@ def dump(root):
     # ElementTree rewrites extension prefixes. Keep mc:Ignorable consistent
     # with the namespace declarations actually emitted, not stale input names.
     root = deepcopy(root)
-    ignorable = q("Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006")
+    ignorable = q(
+        "Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    )
     for node in root.iter():
         node.attrib.pop(ignorable, None)
     # Include mc during both serializations so auto-generated nsN prefixes do
@@ -216,8 +253,11 @@ def dump(root):
     data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
     extensions = []
     for prefix, uri in re.findall(rb'xmlns:([^= ]+)="([^"]+)"', data):
-        if (b"/office/spreadsheetml/" in uri or b"/office/drawing/" in uri
-                or b"/office/excel/" in uri):
+        if (
+            b"/office/spreadsheetml/" in uri
+            or b"/office/drawing/" in uri
+            or b"/office/excel/" in uri
+        ):
             extensions.append(prefix.decode("ascii"))
     if extensions:
         root.set(ignorable, " ".join(extensions))
@@ -238,8 +278,11 @@ def boolean(value):
 
 def attrs(obj, exclude=(), rename=None):
     rename = rename or {}
-    return {rename.get(f.name, f.name): scalar(getattr(obj, f.name)) for f in fields(obj)
-            if f.name not in exclude and getattr(obj, f.name) is not None}
+    return {
+        rename.get(f.name, f.name): scalar(getattr(obj, f.name))
+        for f in fields(obj)
+        if f.name not in exclude and getattr(obj, f.name) is not None
+    }
 
 
 def _required(parent, tag) -> ET.Element:
@@ -286,14 +329,20 @@ def _model_xml(tag, obj, exclude=(), rename=None):
 def _path(base, target):
     if "\\" in target or "?" in target or "#" in target:
         raise ValueError("Invalid package relationship target: " + target)
-    value = posixpath.normpath(target.lstrip("/") if target.startswith("/") else posixpath.join(posixpath.dirname(base), target))
+    value = posixpath.normpath(
+        target.lstrip("/")
+        if target.startswith("/")
+        else posixpath.join(posixpath.dirname(base), target)
+    )
     if value == ".." or value.startswith("../") or ":" in value:
         raise ValueError("Relationship escapes package")
     return value
 
 
 def _rels_path(part):
-    return posixpath.join(posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels")
+    return posixpath.join(
+        posixpath.dirname(part), "_rels", posixpath.basename(part) + ".rels"
+    )
 
 
 class _Archive:
@@ -308,15 +357,25 @@ class _Archive:
             raise
         try:
             infos = self.zip.infolist()
-            if len(infos) > MAX_MEMBERS or sum(i.file_size for i in infos) > MAX_ARCHIVE_BYTES:
+            if (
+                len(infos) > MAX_MEMBERS
+                or sum(i.file_size for i in infos) > MAX_ARCHIVE_BYTES
+            ):
                 raise ValueError("XLSX archive exceeds metadata resource limits")
             names = set()
             for info in infos:
                 name = info.filename
-                if (name.startswith("/") or "\\" in name or ":" in name
-                        or ".." in name.split("/") or name in names
-                        or info.file_size > MAX_PART_BYTES):
-                    raise ValueError("Unsafe, duplicate, or oversized ZIP member: " + name)
+                if (
+                    name.startswith("/")
+                    or "\\" in name
+                    or ":" in name
+                    or ".." in name.split("/")
+                    or name in names
+                    or info.file_size > MAX_PART_BYTES
+                ):
+                    raise ValueError(
+                        "Unsafe, duplicate, or oversized ZIP member: " + name
+                    )
                 names.add(name)
             self.names = names
             self.cache = {}
@@ -350,7 +409,10 @@ def _target(part, rel):
 
 
 def _find_rel(rels, suffix):
-    return next((rel for rel in rels.values() if rel.get("Type", "").endswith("/" + suffix)), None)
+    return next(
+        (rel for rel in rels.values() if rel.get("Type", "").endswith("/" + suffix)),
+        None,
+    )
 
 
 def _book_parts(archive):
@@ -377,10 +439,18 @@ def _book_parts(archive):
 def _read_color(node):
     if node is None:
         return None
-    return _remember(Color(rgb=node.get("rgb"), theme=int(node.get("theme")) if node.get("theme") is not None else None,
-                           indexed=int(node.get("indexed")) if node.get("indexed") is not None else None,
-                           auto=boolean(node.get("auto")) if node.get("auto") is not None else None,
-                           tint=float(node.get("tint", 0))), node)
+    return _remember(
+        Color(
+            rgb=node.get("rgb"),
+            theme=int(node.get("theme")) if node.get("theme") is not None else None,
+            indexed=int(node.get("indexed"))
+            if node.get("indexed") is not None
+            else None,
+            auto=boolean(node.get("auto")) if node.get("auto") is not None else None,
+            tint=float(node.get("tint", 0)),
+        ),
+        node,
+    )
 
 
 def _color_xml(tag, value):
@@ -393,12 +463,39 @@ def _color_xml(tag, value):
     return node
 
 
-_FONT_TAGS = {"name": "name", "size": "sz", "bold": "b", "italic": "i", "underline": "u",
-              "strike": "strike", "vertAlign": "vertAlign", "charset": "charset", "family": "family",
-              "scheme": "scheme", "outline": "outline", "shadow": "shadow", "condense": "condense", "extend": "extend"}
+_FONT_TAGS = {
+    "name": "name",
+    "size": "sz",
+    "bold": "b",
+    "italic": "i",
+    "underline": "u",
+    "strike": "strike",
+    "vertAlign": "vertAlign",
+    "charset": "charset",
+    "family": "family",
+    "scheme": "scheme",
+    "outline": "outline",
+    "shadow": "shadow",
+    "condense": "condense",
+    "extend": "extend",
+}
 _FONT_BOOLS = {"bold", "italic", "strike", "outline", "shadow", "condense", "extend"}
-_ALIGN_NAMES = {"text_rotation": "textRotation", "wrap_text": "wrapText", "shrink_to_fit": "shrinkToFit"}
-_SIDES = ("start", "end", "left", "right", "top", "bottom", "diagonal", "vertical", "horizontal")
+_ALIGN_NAMES = {
+    "text_rotation": "textRotation",
+    "wrap_text": "wrapText",
+    "shrink_to_fit": "shrinkToFit",
+}
+_SIDES = (
+    "start",
+    "end",
+    "left",
+    "right",
+    "top",
+    "bottom",
+    "diagonal",
+    "vertical",
+    "horizontal",
+)
 
 
 def _read_font(node):
@@ -436,13 +533,21 @@ def _read_fill(node):
     fill = PatternFill()
     if pattern is not None:
         fill.fill_type = pattern.get("patternType")
-        fill.fgColor, fill.bgColor = _read_color(pattern.find(q("fgColor"))), _read_color(pattern.find(q("bgColor")))
+        fill.fgColor, fill.bgColor = (
+            _read_color(pattern.find(q("fgColor"))),
+            _read_color(pattern.find(q("bgColor"))),
+        )
     return _remember(fill, node)
 
 
 def _fill_xml(fill):
     node = deepcopy(getattr(fill, "_xml", ET.Element(q("fill"))))
-    if fill.fill_type is None and fill.fgColor is None and fill.bgColor is None and node.find(q("gradientFill")) is not None:
+    if (
+        fill.fill_type is None
+        and fill.fgColor is None
+        and fill.bgColor is None
+        and node.find(q("gradientFill")) is not None
+    ):
         return node
     node[:] = []
     pattern = ET.SubElement(node, q("patternFill"))
@@ -459,7 +564,13 @@ def _read_border(node):
     for name in _SIDES:
         side = node.find(q(name))
         if side is not None:
-            setattr(border, name, _remember(Side(side.get("style"), _read_color(side.find(q("color")))), side))
+            setattr(
+                border,
+                name,
+                _remember(
+                    Side(side.get("style"), _read_color(side.find(q("color")))), side
+                ),
+            )
     return border
 
 
@@ -483,9 +594,25 @@ class _Styles:
         for tag in ("fonts", "fills", "borders", "cellStyleXfs", "cellXfs", "dxfs"):
             if self.root.find(q(tag)) is None:
                 self.root.append(ET.Element(q(tag), {"count": "0"}))
-        for tag, child in (("fonts", _font_xml(Font())), ("fills", _fill_xml(PatternFill())),
-                           ("borders", _border_xml(Border())), ("cellStyleXfs", ET.Element(q("xf"))),
-                           ("cellXfs", ET.Element(q("xf"), {"numFmtId": "0", "fontId": "0", "fillId": "0", "borderId": "0", "xfId": "0"}))):
+        for tag, child in (
+            ("fonts", _font_xml(Font())),
+            ("fills", _fill_xml(PatternFill())),
+            ("borders", _border_xml(Border())),
+            ("cellStyleXfs", ET.Element(q("xf"))),
+            (
+                "cellXfs",
+                ET.Element(
+                    q("xf"),
+                    {
+                        "numFmtId": "0",
+                        "fontId": "0",
+                        "fillId": "0",
+                        "borderId": "0",
+                        "xfId": "0",
+                    },
+                ),
+            ),
+        ):
             if not len(_required(self.root, tag)):
                 _required(self.root, tag).append(child)
         fills = _required(self.root, "fills")
@@ -512,7 +639,11 @@ class _Styles:
             raise ValueError("Cell references invalid style index")
         xf = xfs[index]
         result = CellMetadata()
-        for name, group, parser in (("font", "fonts", _read_font), ("fill", "fills", _read_fill), ("border", "borders", _read_border)):
+        for name, group, parser in (
+            ("font", "fonts", _read_font),
+            ("fill", "fills", _read_fill),
+            ("border", "borders", _read_border),
+        ):
             nodes = _required(self.root, group)
             style_index = int(xf.get(name + "Id", 0))
             if 0 <= style_index < len(nodes):
@@ -520,11 +651,18 @@ class _Styles:
         for name, cls in (("alignment", Alignment), ("protection", Protection)):
             child = xf.find(q(name))
             if child is not None:
-                setattr(result, name, _model(cls, child, _ALIGN_NAMES if name == "alignment" else None))
+                setattr(
+                    result,
+                    name,
+                    _model(cls, child, _ALIGN_NAMES if name == "alignment" else None),
+                )
         return result
 
     def overlay(self, cell, metadata):
-        if not any(getattr(metadata, name) is not None for name in ("font", "fill", "border", "alignment", "protection")):
+        if not any(
+            getattr(metadata, name) is not None
+            for name in ("font", "fill", "border", "alignment", "protection")
+        ):
             return
         xfs = _required(self.root, "cellXfs")
         index = int(cell.get("s", "0"))
@@ -532,7 +670,11 @@ class _Styles:
             raise ValueError("Native cell references invalid style index")
         # Crucially retain the native numFmtId, quotePrefix, xfId, etc.
         xf = deepcopy(xfs[index])
-        for name, group, writer in (("font", "fonts", _font_xml), ("fill", "fills", _fill_xml), ("border", "borders", _border_xml)):
+        for name, group, writer in (
+            ("font", "fonts", _font_xml),
+            ("fill", "fills", _fill_xml),
+            ("border", "borders", _border_xml),
+        ):
             value = getattr(metadata, name)
             if value is not None:
                 xf.set(name + "Id", str(self.add(group, writer(value))))
@@ -542,15 +684,41 @@ class _Styles:
             if value is not None:
                 for old in xf.findall(q(name)):
                     xf.remove(old)
-                xf.append(_model_xml(name, value, rename=_ALIGN_NAMES if name == "alignment" else None))
+                xf.append(
+                    _model_xml(
+                        name,
+                        value,
+                        rename=_ALIGN_NAMES if name == "alignment" else None,
+                    )
+                )
                 xf.set("apply" + name.capitalize(), "1")
         # alignment precedes protection, extLst comes last.
-        xf[:] = sorted(xf, key=lambda n: {"alignment": 0, "protection": 1, "extLst": 2}.get(local(n), 2))
+        xf[:] = sorted(
+            xf,
+            key=lambda n: {"alignment": 0, "protection": 1, "extLst": 2}.get(
+                local(n), 2
+            ),
+        )
         cell.set("s", str(self.add("cellXfs", xf)))
 
     def finish(self):
-        order = ("numFmts", "fonts", "fills", "borders", "cellStyleXfs", "cellXfs", "cellStyles", "dxfs", "tableStyles", "colors", "extLst")
-        self.root[:] = sorted(self.root, key=lambda n: order.index(local(n)) if local(n) in order else len(order))
+        order = (
+            "numFmts",
+            "fonts",
+            "fills",
+            "borders",
+            "cellStyleXfs",
+            "cellXfs",
+            "cellStyles",
+            "dxfs",
+            "tableStyles",
+            "colors",
+            "extLst",
+        )
+        self.root[:] = sorted(
+            self.root,
+            key=lambda n: order.index(local(n)) if local(n) in order else len(order),
+        )
         for tag in ("fonts", "fills", "borders", "cellStyleXfs", "cellXfs", "dxfs"):
             parent = _required(self.root, tag)
             parent.set("count", str(len(parent)))
@@ -558,43 +726,76 @@ class _Styles:
 
 
 def _read_rule(node, styles):
-    rule = Rule(node.get("type", "expression"), operator=node.get("operator"),
-                formula=[n.text or "" for n in node.findall(q("formula"))],
-                stopIfTrue=boolean(node.get("stopIfTrue")) if "stopIfTrue" in node.attrib else None,
-                priority=int(node.get("priority", "0")))
+    rule = Rule(
+        node.get("type", "expression"),
+        operator=node.get("operator"),
+        formula=[n.text or "" for n in node.findall(q("formula"))],
+        stopIfTrue=boolean(node.get("stopIfTrue"))
+        if "stopIfTrue" in node.attrib
+        else None,
+        priority=int(node.get("priority", "0")),
+    )
     dxfs = _required(styles.root, "dxfs")
     if node.get("dxfId") is not None:
         index = int(node.get("dxfId"))
         if 0 <= index < len(dxfs):
             rule._dxf_xml = deepcopy(dxfs[index])
-            for name, parser in (("font", _read_font), ("fill", _read_fill), ("border", _read_border)):
+            for name, parser in (
+                ("font", _read_font),
+                ("fill", _read_fill),
+                ("border", _read_border),
+            ):
                 child = dxfs[index].find(q(name))
                 if child is not None:
                     setattr(rule, name, parser(child))
     scale = node.find(q("colorScale"))
     if scale is not None:
         stops, colors = scale.findall(q("cfvo")), scale.findall(q("color"))
-        rule.colorScale = [(stop.get("type"), stop.get("val"), _read_color(color)) for stop, color in zip(stops, colors)]
+        rule.colorScale = [
+            (stop.get("type"), stop.get("val"), _read_color(color))
+            for stop, color in zip(stops, colors)
+        ]
     return _remember(rule, node)
 
 
 def _rule_xml(rule, styles, priority):
     node = deepcopy(getattr(rule, "_xml", ET.Element(q("cfRule"))))
-    for key, value in (("type", rule.type), ("operator", rule.operator), ("stopIfTrue", rule.stopIfTrue)):
+    for key, value in (
+        ("type", rule.type),
+        ("operator", rule.operator),
+        ("stopIfTrue", rule.stopIfTrue),
+    ):
         node.attrib.pop(key, None)
         if value is not None:
             node.set(key, scalar(value))
     node.set("priority", str(rule.priority or priority))
     node.attrib.pop("dxfId", None)
     dxf = deepcopy(getattr(rule, "_dxf_xml", ET.Element(q("dxf"))))
-    for name, writer in (("font", _font_xml), ("fill", _fill_xml), ("border", _border_xml)):
+    for name, writer in (
+        ("font", _font_xml),
+        ("fill", _fill_xml),
+        ("border", _border_xml),
+    ):
         for child in dxf.findall(q(name)):
             dxf.remove(child)
         if getattr(rule, name) is not None:
             dxf.append(writer(getattr(rule, name)))
     if len(dxf):
-        dxf_order = ("font", "numFmt", "fill", "alignment", "border", "protection", "extLst")
-        dxf[:] = sorted(dxf, key=lambda n: dxf_order.index(local(n)) if local(n) in dxf_order else len(dxf_order))
+        dxf_order = (
+            "font",
+            "numFmt",
+            "fill",
+            "alignment",
+            "border",
+            "protection",
+            "extLst",
+        )
+        dxf[:] = sorted(
+            dxf,
+            key=lambda n: (
+                dxf_order.index(local(n)) if local(n) in dxf_order else len(dxf_order)
+            ),
+        )
         node.set("dxfId", str(styles.add("dxfs", dxf)))
     for child in node.findall(q("formula")) + node.findall(q("colorScale")):
         node.remove(child)
@@ -611,25 +812,49 @@ def _rule_xml(rule, styles, priority):
     return node
 
 
-_CORE_FIELDS = {"creator": (DC, "creator"), "title": (DC, "title"), "subject": (DC, "subject"),
-                "description": (DC, "description"), "identifier": (DC, "identifier"), "language": (DC, "language"),
-                "created": (DCT, "created"), "modified": (DCT, "modified")}
-for _key in ("keywords", "lastModifiedBy", "revision", "category", "contentStatus", "version", "lastPrinted"):
+_CORE_FIELDS = {
+    "creator": (DC, "creator"),
+    "title": (DC, "title"),
+    "subject": (DC, "subject"),
+    "description": (DC, "description"),
+    "identifier": (DC, "identifier"),
+    "language": (DC, "language"),
+    "created": (DCT, "created"),
+    "modified": (DCT, "modified"),
+}
+for _key in (
+    "keywords",
+    "lastModifiedBy",
+    "revision",
+    "category",
+    "contentStatus",
+    "version",
+    "lastPrinted",
+):
     _CORE_FIELDS[_key] = (CP, _key)
-_APP_FIELDS = {"application": "Application", "appVersion": "AppVersion", "company": "Company", "manager": "Manager"}
+_APP_FIELDS = {
+    "application": "Application",
+    "appVersion": "AppVersion",
+    "company": "Company",
+    "manager": "Manager",
+}
 
 
 def _read_properties(archive, book):
     _, rels = _relationships(archive, "")
-    for kind, default, mapping, ns in (("core-properties", "docProps/core.xml", _CORE_FIELDS, CP),
-                                      ("extended-properties", "docProps/app.xml", _APP_FIELDS, EP)):
+    for kind, default, mapping, ns in (
+        ("core-properties", "docProps/core.xml", _CORE_FIELDS, CP),
+        ("extended-properties", "docProps/app.xml", _APP_FIELDS, EP),
+    ):
         path = _target("", _find_rel(rels, kind)) or default
         root = archive.root(path)
         if root is None:
             continue
         setattr(book, "_" + kind.replace("-", "_"), deepcopy(root))
         for key, tag in mapping.items():
-            child = root.find(q(tag[1], tag[0]) if isinstance(tag, tuple) else q(tag, ns))
+            child = root.find(
+                q(tag[1], tag[0]) if isinstance(tag, tuple) else q(tag, ns)
+            )
             if child is not None:
                 value = child.text
                 if key in ("created", "modified", "lastPrinted") and value:
@@ -645,17 +870,28 @@ def _read_table(root):
     for name in ("name", "id", "headerRowCount", "totalsRowCount", "totalsRowShown"):
         if root.get(name) is not None:
             value = root.get(name)
-            setattr(table, name, boolean(value) if name == "totalsRowShown" else int(value) if name in ("id", "headerRowCount", "totalsRowCount") else value)
+            setattr(
+                table,
+                name,
+                boolean(value)
+                if name == "totalsRowShown"
+                else int(value)
+                if name in ("id", "headerRowCount", "totalsRowCount")
+                else value,
+            )
     style = root.find(q("tableStyleInfo"))
     if style is not None:
         table.tableStyleInfo = _model(TableStyleInfo, style)
-    table.tableColumns = [_remember(TableColumn(int(n.get("id")), n.get("name", "")), n)
-                          for n in root.findall(q("tableColumns") + "/" + q("tableColumn"))]
+    table.tableColumns = [
+        _remember(TableColumn(int(n.get("id")), n.get("name", "")), n)
+        for n in root.findall(q("tableColumns") + "/" + q("tableColumn"))
+    ]
     return _remember(table, root)
 
 
 class _OpaqueChart:
     """Loaded unsupported chart; its XML/dependencies are preserved verbatim."""
+
     _part: str
     _drawing_part: str
     _anchor_xml: ET.Element
@@ -673,12 +909,19 @@ def _chart_text(node):
 def _read_chart(root, anchor):
     bar = root.find(".//" + q("barChart", C))
     plot = root.find(".//" + q("plotArea", C))
-    chart_types = [n for n in plot if local(n).endswith("Chart")] if plot is not None else []
+    chart_types = (
+        [n for n in plot if local(n).endswith("Chart")] if plot is not None else []
+    )
     if bar is None or len(chart_types) != 1:
         return _OpaqueChart(anchor)
     chart = BarChart(anchor=anchor, title=_chart_text(root.find(".//" + q("title", C))))
     chart._chart_xml = deepcopy(root)
-    for tag, name, convert in (("barDir", "type", str), ("grouping", "grouping", str), ("overlap", "overlap", int), ("gapWidth", "gapWidth", int)):
+    for tag, name, convert in (
+        ("barDir", "type", str),
+        ("grouping", "grouping", str),
+        ("overlap", "overlap", int),
+        ("gapWidth", "gapWidth", int),
+    ):
         child = bar.find(q(tag, C))
         if child is not None:
             setattr(chart, name, convert(child.get("val")))
@@ -695,9 +938,12 @@ def _read_chart(root, anchor):
         category = node.find(q("cat", C) + "/" + q("strRef", C) + "/" + q("f", C))
         if category is None:
             category = node.find(q("cat", C) + "/" + q("numRef", C) + "/" + q("f", C))
-        series = Series(values.text or "", title=title.text if title is not None else None,
-                        title_reference=title_ref.text if title_ref is not None else None,
-                        categories=category.text if category is not None else None)
+        series = Series(
+            values.text or "",
+            title=title.text if title is not None else None,
+            title_reference=title_ref.text if title_ref is not None else None,
+            categories=category.text if category is not None else None,
+        )
         series._xml = deepcopy(node)
         chart.series.append(series)
     axes = root.findall(".//" + q("catAx", C)) + root.findall(".//" + q("valAx", C))
@@ -739,21 +985,37 @@ def load_metadata(source):
             for node in names:
                 name = DefinedName(node.get("name"), node.text)
                 for f in fields(name):
-                    if f.name not in ("name", "attr_text") and node.get(f.name) is not None:
+                    if (
+                        f.name not in ("name", "attr_text")
+                        and node.get(f.name) is not None
+                    ):
                         value = node.get(f.name)
                         annotation = str(f.type)
-                        setattr(name, f.name, boolean(value) if "bool" in annotation else int(value) if "int" in annotation else value)
+                        setattr(
+                            name,
+                            f.name,
+                            boolean(value)
+                            if "bool" in annotation
+                            else int(value)
+                            if "int" in annotation
+                            else value,
+                        )
                 book.defined_names.add(_remember(name, node))
         for sheet_node, part in sheets:
             if part not in archive.names:
                 continue
             root = _worksheet_metadata_xml(archive.read(part))
-            sheet = MetadataSheet(title=sheet_node.get("name"), sheet_state=sheet_node.get("state", "visible"))
+            sheet = MetadataSheet(
+                title=sheet_node.get("name"),
+                sheet_state=sheet_node.get("state", "visible"),
+            )
             book.sheets[sheet.title] = sheet
             # Never copy sheetData, even its reduced styled-cell/row stubs.
             sheet._xml = ET.Element(root.tag, dict(root.attrib))
             sheet._xml.text, sheet._xml.tail = root.text, root.tail
-            sheet._xml.extend(deepcopy(node) for node in root if node.tag != q("sheetData"))
+            sheet._xml.extend(
+                deepcopy(node) for node in root if node.tag != q("sheetData")
+            )
             sheet._part = part
             sheet._rels, rels = _relationships(archive, part)
             for cell in root.findall(q("sheetData") + "/" + q("row") + "/" + q("c")):
@@ -765,20 +1027,35 @@ def load_metadata(source):
                 dimension = _model(ColumnDimension, col)
                 sheet.column_dimensions[column_letter(int(col.get("min")))] = dimension
             for row in root.findall(q("sheetData") + "/" + q("row")):
-                if any(key in row.attrib for key in ("ht", "hidden", "outlineLevel", "collapsed")):
-                    dimension = _model(RowDimension, ET.Element(row.tag, dict(row.attrib)), {"height": "ht"})
+                if any(
+                    key in row.attrib
+                    for key in ("ht", "hidden", "outlineLevel", "collapsed")
+                ):
+                    dimension = _model(
+                        RowDimension,
+                        ET.Element(row.tag, dict(row.attrib)),
+                        {"height": "ht"},
+                    )
                     sheet.row_dimensions[int(row.get("r"))] = dimension
             pane = root.find(q("sheetViews") + "/" + q("sheetView") + "/" + q("pane"))
             if pane is not None and pane.get("state") in ("frozen", "frozenSplit"):
-                sheet.freeze_panes = pane.get("topLeftCell") or "%s%s" % (column_letter(int(float(pane.get("xSplit", "0"))) + 1), int(float(pane.get("ySplit", "0"))) + 1)
+                sheet.freeze_panes = pane.get("topLeftCell") or "{}{}".format(
+                    column_letter(int(float(pane.get("xSplit", "0"))) + 1),
+                    int(float(pane.get("ySplit", "0"))) + 1,
+                )
             filter_node = root.find(q("autoFilter"))
             if filter_node is not None:
-                sheet.auto_filter = _remember(AutoFilter(filter_node.get("ref")), filter_node)
+                sheet.auto_filter = _remember(
+                    AutoFilter(filter_node.get("ref")), filter_node
+                )
             props = root.find(q("sheetPr"))
             if props is not None:
                 sheet.sheet_properties._xml = deepcopy(props)
                 sheet.sheet_properties.tabColor = _read_color(props.find(q("tabColor")))
-            for tag, cls, name in (("sheetProtection", SheetProtection, "protection"), ("pageSetup", PageSetup, "page_setup")):
+            for tag, cls, name in (
+                ("sheetProtection", SheetProtection, "protection"),
+                ("pageSetup", PageSetup, "page_setup"),
+            ):
                 node = root.find(q(tag))
                 if node is not None:
                     setattr(sheet, name, _model(cls, node))
@@ -786,7 +1063,9 @@ def load_metadata(source):
             if validations is not None:
                 sheet.data_validations._xml = deepcopy(validations)
                 for node in validations.findall(q("dataValidation")):
-                    validation = _model(DataValidation, node, exclude=("formula1", "formula2"))
+                    validation = _model(
+                        DataValidation, node, exclude=("formula1", "formula2")
+                    )
                     for key in ("formula1", "formula2"):
                         formula = node.find(q(key))
                         if formula is not None:
@@ -794,26 +1073,41 @@ def load_metadata(source):
                     sheet.data_validations.add(validation)
             for conditional in root.findall(q("conditionalFormatting")):
                 for rule in conditional.findall(q("cfRule")):
-                    sheet.conditional_formatting.add(conditional.get("sqref"), _read_rule(rule, styles))
+                    sheet.conditional_formatting.add(
+                        conditional.get("sqref"), _read_rule(rule, styles)
+                    )
             for hyperlink in root.findall(q("hyperlinks") + "/" + q("hyperlink")):
                 link = _model(Hyperlink, hyperlink)
                 rel = rels.get(hyperlink.get(q("id", R)))
                 if rel is not None:
                     link.target = rel.get("Target")
                 c1, r1, _, _ = range_bounds(hyperlink.get("ref"))
-                sheet.cells.setdefault(column_letter(c1) + str(r1), CellMetadata()).hyperlink = link
+                sheet.cells.setdefault(
+                    column_letter(c1) + str(r1), CellMetadata()
+                ).hyperlink = link
             comment_rel = _find_rel(rels, "comments")
             comment_path = _target(part, comment_rel)
             if comment_path:
                 comments = archive.root(comment_path)
                 if comments is not None:
-                    authors = [n.text or "" for n in comments.findall(q("authors") + "/" + q("author"))]
+                    authors = [
+                        n.text or ""
+                        for n in comments.findall(q("authors") + "/" + q("author"))
+                    ]
                     for node in comments.findall(q("commentList") + "/" + q("comment")):
                         author_id = int(node.get("authorId", "0"))
                         text = "".join(n.text or "" for n in node.iter(q("t")))
-                        comment = _remember(Comment(text, authors[author_id] if author_id < len(authors) else ""), node)
+                        comment = _remember(
+                            Comment(
+                                text,
+                                authors[author_id] if author_id < len(authors) else "",
+                            ),
+                            node,
+                        )
                         comment._original_text = text
-                        sheet.cells.setdefault(node.get("ref"), CellMetadata()).comment = comment
+                        sheet.cells.setdefault(
+                            node.get("ref"), CellMetadata()
+                        ).comment = comment
             vml_path = _target(part, _find_rel(rels, "vmlDrawing"))
             if vml_path:
                 vml = archive.root(vml_path)
@@ -827,9 +1121,16 @@ def load_metadata(source):
                     if cell is None or cell.comment is None:
                         continue
                     for name in ("width", "height"):
-                        match = re.search(r"(?:^|;)\s*" + name + r"\s*:\s*([0-9.]+)(pt|px)?", shape.get("style", ""))
+                        match = re.search(
+                            r"(?:^|;)\s*" + name + r"\s*:\s*([0-9.]+)(pt|px)?",
+                            shape.get("style", ""),
+                        )
                         if match:
-                            setattr(cell.comment, name, float(match[1]) * (4 / 3 if match[2] == "pt" else 1))
+                            setattr(
+                                cell.comment,
+                                name,
+                                float(match[1]) * (4 / 3 if match[2] == "pt" else 1),
+                            )
             for node in root.findall(q("tableParts") + "/" + q("tablePart")):
                 table_path = _target(part, rels.get(node.get(q("id", R))))
                 if table_path:
@@ -852,7 +1153,9 @@ def load_metadata(source):
                     chart_node = anchor_node.find(".//" + q("chart", C))
                     if chart_node is None:
                         continue
-                    chart_path = _target(drawing_path, drawing_rels.get(chart_node.get(q("id", R))))
+                    chart_path = _target(
+                        drawing_path, drawing_rels.get(chart_node.get(q("id", R)))
+                    )
                     if not chart_path:
                         continue
                     chart_root = archive.root(chart_path)
@@ -861,18 +1164,25 @@ def load_metadata(source):
                     origin = anchor_node.find(q("from", XDR))
                     anchor = "A1"
                     if origin is not None:
-                        anchor = column_letter(int(origin.findtext(q("col", XDR), "0")) + 1) + str(int(origin.findtext(q("row", XDR), "0")) + 1)
+                        anchor = column_letter(
+                            int(origin.findtext(q("col", XDR), "0")) + 1
+                        ) + str(int(origin.findtext(q("row", XDR), "0")) + 1)
                     chart = _read_chart(chart_root, anchor)
                     chart._part, chart._drawing_part = chart_path, drawing_path
                     chart._anchor_xml = deepcopy(anchor_node)
                     extent = anchor_node.find(q("ext", XDR))
                     if extent is not None and isinstance(chart, BarChart):
-                        chart.width, chart.height = int(extent.get("cx")) / 360000, int(extent.get("cy")) / 360000
+                        chart.width, chart.height = (
+                            int(extent.get("cx")) / 360000,
+                            int(extent.get("cy")) / 360000,
+                        )
                     sheet.charts.append(chart)
             # Keep VML, images, printer settings, and other internal dependencies.
             for rel in rels.values():
                 path = _target(part, rel)
-                if path and not rel.get("Type", "").endswith(("/hyperlink", "/comments")):
+                if path and not rel.get("Type", "").endswith(
+                    ("/hyperlink", "/comments")
+                ):
                     _capture_dependencies(archive, book, path)
         return book
     finally:
@@ -884,16 +1194,18 @@ class _Package:
         self.archive = archive
         self.parts = {}
         self.used = set(archive.names) | set(getattr(metadata, "_parts", {}))
-        self.content_types = archive.root("[Content_Types].xml", ET.Element(q("Types", CT)))
+        self.content_types = archive.root(
+            "[Content_Types].xml", ET.Element(q("Types", CT))
+        )
         self.original_types = getattr(metadata, "_content_types", None)
         self.original_parts = getattr(metadata, "_parts", {})
         self.imports = {}
 
     def allocate(self, directory, stem, extension):
         index = 1
-        while "%s/%s%d.%s" % (directory, stem, index, extension) in self.used:
+        while f"{directory}/{stem}{index:d}.{extension}" in self.used:
             index += 1
-        path = "%s/%s%d.%s" % (directory, stem, index, extension)
+        path = f"{directory}/{stem}{index:d}.{extension}"
         self.used.add(path)
         return path
 
@@ -908,11 +1220,22 @@ class _Package:
             if node.tag == q("Override", CT) and node.get("PartName") == "/" + path:
                 node.set("ContentType", type_)
                 return
-        ET.SubElement(self.content_types, q("Override", CT), {"PartName": "/" + path, "ContentType": type_})
+        ET.SubElement(
+            self.content_types,
+            q("Override", CT),
+            {"PartName": "/" + path, "ContentType": type_},
+        )
 
     def default(self, extension, type_):
-        if not any(n.tag == q("Default", CT) and n.get("Extension") == extension for n in self.content_types):
-            ET.SubElement(self.content_types, q("Default", CT), {"Extension": extension, "ContentType": type_})
+        if not any(
+            n.tag == q("Default", CT) and n.get("Extension") == extension
+            for n in self.content_types
+        ):
+            ET.SubElement(
+                self.content_types,
+                q("Default", CT),
+                {"Extension": extension, "ContentType": type_},
+            )
 
     def import_part(self, path):
         if path in self.imports:
@@ -922,14 +1245,18 @@ class _Package:
         directory, filename = posixpath.split(path)
         stem, extension = posixpath.splitext(filename)
         # Always allocate imported parts, avoiding collisions with native assets.
-        new = self.allocate(directory, re.sub(r"\d+$", "", stem) + "Metadata", extension.lstrip("."))
+        new = self.allocate(
+            directory, re.sub(r"\d+$", "", stem) + "Metadata", extension.lstrip(".")
+        )
         self.imports[path] = new
         self.parts[new] = self.original_parts[path]
         if self.original_types is not None:
             for node in self.original_types:
                 if node.get("PartName") == "/" + path:
                     self.override(new, node.get("ContentType"))
-                elif node.tag == q("Default", CT) and node.get("Extension") == extension.lstrip("."):
+                elif node.tag == q("Default", CT) and node.get(
+                    "Extension"
+                ) == extension.lstrip("."):
                     self.default(node.get("Extension"), node.get("ContentType"))
         relpath = _rels_path(path)
         if relpath in self.original_parts:
@@ -937,7 +1264,12 @@ class _Package:
             for rel in rels:
                 target = _target(path, rel)
                 if target:
-                    rel.set("Target", posixpath.relpath(self.import_part(target), posixpath.dirname(new)))
+                    rel.set(
+                        "Target",
+                        posixpath.relpath(
+                            self.import_part(target), posixpath.dirname(new)
+                        ),
+                    )
             self.put(_rels_path(new), rels)
         return new
 
@@ -945,9 +1277,9 @@ class _Package:
 def _add_rel(root, type_, target, external=False):
     used = {n.get("Id") for n in root}
     index = 1
-    while "rId%d" % index in used:
+    while f"rId{index:d}" in used:
         index += 1
-    id_ = "rId%d" % index
+    id_ = f"rId{index:d}"
     attributes = {"Id": id_, "Type": R + "/" + type_, "Target": target}
     if external:
         attributes["TargetMode"] = "External"
@@ -976,15 +1308,49 @@ def _template(sheet, root, tag):
     return deepcopy(node) if node is not None else ET.Element(q(tag))
 
 
-_SHEET_ORDER = ("sheetPr", "dimension", "sheetViews", "sheetFormatPr", "cols", "sheetData", "sheetCalcPr",
-                "sheetProtection", "protectedRanges", "scenarios", "autoFilter", "sortState", "dataConsolidate",
-                "customSheetViews", "mergeCells", "phoneticPr", "conditionalFormatting", "dataValidations",
-                "hyperlinks", "printOptions", "pageMargins", "pageSetup", "headerFooter", "rowBreaks", "colBreaks",
-                "customProperties", "cellWatches", "ignoredErrors", "smartTags", "drawing", "legacyDrawing",
-                "legacyDrawingHF", "picture", "oleObjects", "controls", "webPublishItems", "tableParts", "extLst")
+_SHEET_ORDER = (
+    "sheetPr",
+    "dimension",
+    "sheetViews",
+    "sheetFormatPr",
+    "cols",
+    "sheetData",
+    "sheetCalcPr",
+    "sheetProtection",
+    "protectedRanges",
+    "scenarios",
+    "autoFilter",
+    "sortState",
+    "dataConsolidate",
+    "customSheetViews",
+    "mergeCells",
+    "phoneticPr",
+    "conditionalFormatting",
+    "dataValidations",
+    "hyperlinks",
+    "printOptions",
+    "pageMargins",
+    "pageSetup",
+    "headerFooter",
+    "rowBreaks",
+    "colBreaks",
+    "customProperties",
+    "cellWatches",
+    "ignoredErrors",
+    "smartTags",
+    "drawing",
+    "legacyDrawing",
+    "legacyDrawingHF",
+    "picture",
+    "oleObjects",
+    "controls",
+    "webPublishItems",
+    "tableParts",
+    "extLst",
+)
 
 
-def _sheet_basic(root, sheet, styles):
+def _sheet_basic(root, sheet, styles, *, native_styles=False):
     data = root.find(q("sheetData"))
     if data is None:
         data = ET.SubElement(root, q("sheetData"))
@@ -996,9 +1362,12 @@ def _sheet_basic(root, sheet, styles):
         if coordinate not in cells:
             row = rows.get(row_index)
             if row is None:
-                row = rows[row_index] = ET.SubElement(data, q("row"), {"r": str(row_index)})
+                row = rows[row_index] = ET.SubElement(
+                    data, q("row"), {"r": str(row_index)}
+                )
             cells[coordinate] = ET.SubElement(row, q("c"), {"r": coordinate})
-        styles.overlay(cells[coordinate], metadata)
+        if not native_styles:
+            styles.overlay(cells[coordinate], metadata)
     for index, dimension in sheet.row_dimensions.items():
         if not isinstance(index, int) or not 1 <= index <= 1048576:
             raise ValueError("Invalid row dimension index")
@@ -1012,7 +1381,10 @@ def _sheet_basic(root, sheet, styles):
             row.set("customHeight", "1")
     data[:] = sorted(data, key=lambda n: int(n.get("r", "0")))
     for row in data:
-        row[:] = sorted(row, key=lambda n: coordinate_parts(n.get("r"))[0] if local(n) == "c" else 16385)
+        row[:] = sorted(
+            row,
+            key=lambda n: coordinate_parts(n.get("r"))[0] if local(n) == "c" else 16385,
+        )
     # Expand dimension for metadata-only cells; do not contract the native range.
     if cells:
         coordinates = [coordinate_parts(c) for c in cells]
@@ -1025,7 +1397,16 @@ def _sheet_basic(root, sheet, styles):
                 pass
         c1, r1 = min(c for c, r in coordinates), min(r for c, r in coordinates)
         c2, r2 = max(c for c, r in coordinates), max(r for c, r in coordinates)
-        _replace(root, "dimension", [ET.Element(q("dimension"), {"ref": "%s%d:%s%d" % (column_letter(c1), r1, column_letter(c2), r2)})])
+        _replace(
+            root,
+            "dimension",
+            [
+                ET.Element(
+                    q("dimension"),
+                    {"ref": f"{column_letter(c1)}{r1:d}:{column_letter(c2)}{r2:d}"},
+                )
+            ],
+        )
     cols = ET.Element(q("cols"))
     native_styles, resolved = {}, {}
     for native in root.findall(q("cols") + "/" + q("col")):
@@ -1038,7 +1419,9 @@ def _sheet_basic(root, sheet, styles):
                 resolved[index] = ET.Element(q("col"), {"style": native.get("style")})
     # Resolve overlapping grouped columns so an explicit B dimension overrides
     # a loaded A:C group. Native style IDs survive even on unmodeled columns.
-    for letter, dimension in sorted(sheet.column_dimensions.items(), key=lambda item: column_index(item[0])):
+    for letter, dimension in sorted(
+        sheet.column_dimensions.items(), key=lambda item: column_index(item[0])
+    ):
         index = column_index(letter)
         low, high = dimension.min or index, dimension.max or index
         column_letter(low)
@@ -1046,7 +1429,17 @@ def _sheet_basic(root, sheet, styles):
         if high < low:
             raise ValueError("Reversed column dimension")
         node = deepcopy(getattr(dimension, "_xml", ET.Element(q("col"))))
-        for key in ("min", "max", "style", "width", "hidden", "bestFit", "outlineLevel", "collapsed", "customWidth"):
+        for key in (
+            "min",
+            "max",
+            "style",
+            "width",
+            "hidden",
+            "bestFit",
+            "outlineLevel",
+            "collapsed",
+            "customWidth",
+        ):
             node.attrib.pop(key, None)
         node.attrib.update(attrs(dimension, exclude=("min", "max")))
         if dimension.width is not None:
@@ -1080,23 +1473,42 @@ def _sheet_basic(root, sheet, styles):
     if view is None:
         view = ET.SubElement(views, q("sheetView"), {"workbookViewId": "0"})
     old_pane = view.find(q("pane"))
-    was_frozen = old_pane is not None and old_pane.get("state") in ("frozen", "frozenSplit")
+    was_frozen = old_pane is not None and old_pane.get("state") in (
+        "frozen",
+        "frozenSplit",
+    )
     if was_frozen or sheet.freeze_panes:
         for node in view.findall(q("pane")) + view.findall(q("selection")):
             view.remove(node)
     if sheet.freeze_panes and sheet.freeze_panes != "A1":
-        x, y = coordinate_parts(getattr(sheet.freeze_panes, "coordinate", sheet.freeze_panes))
-        pane = ET.Element(q("pane"), {"state": "frozen", "topLeftCell": column_letter(x) + str(y)})
+        x, y = coordinate_parts(
+            getattr(sheet.freeze_panes, "coordinate", sheet.freeze_panes)
+        )
+        pane = ET.Element(
+            q("pane"), {"state": "frozen", "topLeftCell": column_letter(x) + str(y)}
+        )
         if x > 1:
             pane.set("xSplit", str(x - 1))
         if y > 1:
             pane.set("ySplit", str(y - 1))
-        active = "bottomRight" if x > 1 and y > 1 else "topRight" if x > 1 else "bottomLeft"
+        active = (
+            "bottomRight" if x > 1 and y > 1 else "topRight" if x > 1 else "bottomLeft"
+        )
         pane.set("activePane", active)
         view.insert(0, pane)
-        ET.SubElement(view, q("selection"), {"pane": active, "activeCell": column_letter(x) + str(y), "sqref": column_letter(x) + str(y)})
+        ET.SubElement(
+            view,
+            q("selection"),
+            {
+                "pane": active,
+                "activeCell": column_letter(x) + str(y),
+                "sqref": column_letter(x) + str(y),
+            },
+        )
     _replace(root, "sheetViews", [views])
-    filter_node = deepcopy(getattr(sheet.auto_filter, "_xml", ET.Element(q("autoFilter"))))
+    filter_node = deepcopy(
+        getattr(sheet.auto_filter, "_xml", ET.Element(q("autoFilter")))
+    )
     if sheet.auto_filter.ref:
         range_bounds(sheet.auto_filter.ref)
         filter_node.set("ref", sheet.auto_filter.ref)
@@ -1106,16 +1518,24 @@ def _sheet_basic(root, sheet, styles):
         props.remove(node)
     if sheet.sheet_properties.tabColor is not None:
         props.insert(0, _color_xml("tabColor", sheet.sheet_properties.tabColor))
-    if sheet.page_setup.fitToWidth is not None or sheet.page_setup.fitToHeight is not None:
+    if (
+        sheet.page_setup.fitToWidth is not None
+        or sheet.page_setup.fitToHeight is not None
+    ):
         setup_props = props.find(q("pageSetUpPr"))
         if setup_props is None:
             setup_props = ET.SubElement(props, q("pageSetUpPr"))
         setup_props.set("fitToPage", "1")
     _replace(root, "sheetPr", [props] if len(props) or props.attrib else [])
-    for tag, model in (("sheetProtection", sheet.protection), ("pageSetup", sheet.page_setup)):
+    for tag, model in (
+        ("sheetProtection", sheet.protection),
+        ("pageSetup", sheet.page_setup),
+    ):
         node = _model_xml(tag, model)
         _replace(root, tag, [node] if node.attrib or len(node) else [])
-    validations = deepcopy(getattr(sheet.data_validations, "_xml", ET.Element(q("dataValidations"))))
+    validations = deepcopy(
+        getattr(sheet.data_validations, "_xml", ET.Element(q("dataValidations")))
+    )
     validations[:] = [n for n in validations if local(n) != "dataValidation"]
     count = 0
     for validation in sheet.data_validations:
@@ -1123,7 +1543,9 @@ def _sheet_basic(root, sheet, styles):
             continue
         for value in str(validation.sqref).split():
             range_bounds(value)
-        node = _model_xml("dataValidation", validation, exclude=("formula1", "formula2"))
+        node = _model_xml(
+            "dataValidation", validation, exclude=("formula1", "formula2")
+        )
         for key in ("formula1", "formula2"):
             for old in node.findall(q(key)):
                 node.remove(old)
@@ -1165,14 +1587,20 @@ def _hyperlinks(root, rels, sheet):
             if link.target.startswith("#"):
                 node.set("location", link.target[1:])
             else:
-                node.set(q("id", R), _add_rel(rels, "hyperlink", link.target, external=True))
+                node.set(
+                    q("id", R), _add_rel(rels, "hyperlink", link.target, external=True)
+                )
         hyperlinks.append(node)
     _replace(root, "hyperlinks", [hyperlinks] if len(hyperlinks) else [])
 
 
 def _comments(package, root, rels, part, sheet):
     _remove_rels(rels, ("comments",))
-    comments = [(coord, cell.comment) for coord, cell in sheet.cells.items() if cell.comment is not None]
+    comments = [
+        (coord, cell.comment)
+        for coord, cell in sheet.cells.items()
+        if cell.comment is not None
+    ]
     # Preserve non-note VML (buttons and other controls) through import below.
     legacy = _template(sheet, root, "legacyDrawing")
     legacy_id = legacy.get(q("id", R))
@@ -1191,12 +1619,18 @@ def _comments(package, root, rels, part, sheet):
             vml = package.archive.root(native_path)
     if vml is not None:
         for shape in list(vml):
-            if any(n.get("ObjectType") == "Note" for n in shape.iter(q("ClientData", X))):
+            if any(
+                n.get("ObjectType") == "Note" for n in shape.iter(q("ClientData", X))
+            ):
                 vml.remove(shape)
     if not comments:
         if vml is not None:
             if any(local(n) == "shape" for n in vml):
-                out_vml = package.import_part(vml_path) if vml_path in package.original_parts else native_path
+                out_vml = (
+                    package.import_part(vml_path)
+                    if vml_path in package.original_parts
+                    else native_path
+                )
                 if out_vml:
                     package.put(out_vml, vml)
             else:
@@ -1209,11 +1643,27 @@ def _comments(package, root, rels, part, sheet):
     if vml is None:
         vml = ET.Element("xml")
     if not any(n.get("id") == "_x0000_t202" for n in vml):
-        shape_type = ET.SubElement(vml, q("shapetype", V), {"id": "_x0000_t202", "coordsize": "21600,21600", q("spt", O): "202", "path": "m,l,21600r21600,l21600,xe"})
+        shape_type = ET.SubElement(
+            vml,
+            q("shapetype", V),
+            {
+                "id": "_x0000_t202",
+                "coordsize": "21600,21600",
+                q("spt", O): "202",
+                "path": "m,l,21600r21600,l21600,xe",
+            },
+        )
         ET.SubElement(shape_type, q("stroke", V), {"joinstyle": "miter"})
-        ET.SubElement(shape_type, q("path", V), {"gradientshapeok": "t", q("connecttype", O): "rect"})
+        ET.SubElement(
+            shape_type,
+            q("path", V),
+            {"gradientshapeok": "t", q("connecttype", O): "rect"},
+        )
     comments_root = ET.Element(q("comments"))
-    authors_node, list_node = ET.SubElement(comments_root, q("authors")), ET.SubElement(comments_root, q("commentList"))
+    authors_node, list_node = (
+        ET.SubElement(comments_root, q("authors")),
+        ET.SubElement(comments_root, q("commentList")),
+    )
     authors = []
     used_shape_ids = {n.get("id") for n in vml}
     shape_index = 1025
@@ -1229,18 +1679,36 @@ def _comments(package, root, rels, part, sheet):
             for old in node.findall(q("text")):
                 node.remove(old)
             text = ET.SubElement(node, q("text"))
-            ET.SubElement(text, q("t"), {q("space", "http://www.w3.org/XML/1998/namespace"): "preserve"}).text = comment.text
+            ET.SubElement(
+                text,
+                q("t"),
+                {q("space", "http://www.w3.org/XML/1998/namespace"): "preserve"},
+            ).text = comment.text
         list_node.append(node)
-        while "_x0000_s%d" % shape_index in used_shape_ids:
+        while f"_x0000_s{shape_index:d}" in used_shape_ids:
             shape_index += 1
-        shape = ET.SubElement(vml, q("shape", V), {"id": "_x0000_s%d" % shape_index, "type": "#_x0000_t202",
-                              "style": "position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:%spt;height:%spt;z-index:1;visibility:hidden" % (comment.width * 0.75, comment.height * 0.75),
-                              "fillcolor": "#ffffe1", q("insetmode", O): "auto"})
+        shape = ET.SubElement(
+            vml,
+            q("shape", V),
+            {
+                "id": f"_x0000_s{shape_index:d}",
+                "type": "#_x0000_t202",
+                "style": f"position:absolute;margin-left:59.25pt;margin-top:1.5pt;width:{comment.width * 0.75}pt;height:{comment.height * 0.75}pt;z-index:1;visibility:hidden",
+                "fillcolor": "#ffffe1",
+                q("insetmode", O): "auto",
+            },
+        )
         shape_index += 1
         ET.SubElement(shape, q("fill", V), {"color2": "#ffffe1"})
-        ET.SubElement(shape, q("shadow", V), {"on": "t", "color": "black", "obscured": "t"})
+        ET.SubElement(
+            shape, q("shadow", V), {"on": "t", "color": "black", "obscured": "t"}
+        )
         ET.SubElement(shape, q("path", V), {q("connecttype", O): "none"})
-        ET.SubElement(ET.SubElement(shape, q("textbox", V), {"style": "mso-direction-alt:auto"}), "div", {"style": "text-align:left"})
+        ET.SubElement(
+            ET.SubElement(shape, q("textbox", V), {"style": "mso-direction-alt:auto"}),
+            "div",
+            {"style": "text-align:left"},
+        )
         client = ET.SubElement(shape, q("ClientData", X), {"ObjectType": "Note"})
         ET.SubElement(client, q("MoveWithCells", X))
         ET.SubElement(client, q("SizeWithCells", X))
@@ -1248,7 +1716,11 @@ def _comments(package, root, rels, part, sheet):
         ET.SubElement(client, q("Row", X)).text = str(row - 1)
         ET.SubElement(client, q("Column", X)).text = str(col - 1)
     comment_part = package.allocate("xl/comments", "comment", "xml")
-    package.put(comment_part, comments_root, "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml")
+    package.put(
+        comment_part,
+        comments_root,
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.comments+xml",
+    )
     _add_rel(rels, "comments", posixpath.relpath(comment_part, posixpath.dirname(part)))
     # Use imported VML to retain control dependencies, if present.
     if vml_path in package.original_parts:
@@ -1261,7 +1733,9 @@ def _comments(package, root, rels, part, sheet):
     if current_legacy is not None:
         current_id = current_legacy.get(q("id", R))
         rels[:] = [n for n in rels if n.get("Id") != current_id]
-    id_ = _add_rel(rels, "vmlDrawing", posixpath.relpath(out_vml, posixpath.dirname(part)))
+    id_ = _add_rel(
+        rels, "vmlDrawing", posixpath.relpath(out_vml, posixpath.dirname(part))
+    )
     _replace(root, "legacyDrawing", [ET.Element(q("legacyDrawing"), {q("id", R): id_})])
 
 
@@ -1288,13 +1762,24 @@ def _table_xml(table, id_, cells, archive):
                         _, rels = _relationships(archive, workbook_part)
                         path = _target(workbook_part, _find_rel(rels, "sharedStrings"))
                         shared_root = archive.root(path) if path else None
-                        shared = ["".join(t.text or "" for t in n.iter(q("t"))) for n in shared_root] if shared_root is not None else []
+                        shared = (
+                            [
+                                "".join(t.text or "" for t in n.iter(q("t")))
+                                for n in shared_root
+                            ]
+                            if shared_root is not None
+                            else []
+                        )
                     value = cell.findtext(q("v"))
                     if value is not None and 0 <= int(value) < len(shared):
                         name = shared[int(value)]
                 else:
                     name = cell.findtext(q("v"))
-            columns.append(TableColumn(index, str(name) if name is not None else "Column%d" % index))
+            columns.append(
+                TableColumn(
+                    index, str(name) if name is not None else f"Column{index:d}"
+                )
+            )
     names = [c.name.casefold() for c in columns]
     if len(set(names)) != len(names):
         raise ValueError("Table column names must be unique")
@@ -1313,14 +1798,19 @@ def _table_xml(table, id_, cells, archive):
         bottom = r2 - (table.totalsRowCount or (1 if table.totalsRowShown else 0))
         if bottom < r1:
             raise ValueError("Table has no header/data rows")
-        filter_node.set("ref", "%s%d:%s%d" % (column_letter(c1), r1, column_letter(c2), bottom))
+        filter_node.set(
+            "ref",
+            f"{column_letter(c1)}{r1:d}:{column_letter(c2)}{bottom:d}",
+        )
     elif filter_node is not None:
         node.remove(filter_node)
     node.append(col_node)
     if table.tableStyleInfo is not None:
         node.append(_model_xml("tableStyleInfo", table.tableStyleInfo))
     order = ("autoFilter", "sortState", "tableColumns", "tableStyleInfo", "extLst")
-    node[:] = sorted(node, key=lambda n: order.index(local(n)) if local(n) in order else len(order))
+    node[:] = sorted(
+        node, key=lambda n: order.index(local(n)) if local(n) in order else len(order)
+    )
     return node
 
 
@@ -1329,7 +1819,10 @@ def _tables(package, root, rels, part, sheet, cells, used_names, used_ids):
     parts = ET.Element(q("tableParts"))
     for table in sheet.tables.values():
         name = table.displayName
-        if not re.fullmatch(r"[A-Za-z_\\][A-Za-z0-9_.\\]*", name) or name.casefold() in used_names:
+        if (
+            not re.fullmatch(r"[A-Za-z_\\][A-Za-z0-9_.\\]*", name)
+            or name.casefold() in used_names
+        ):
             raise ValueError("Invalid or duplicate table name: " + name)
         if re.fullmatch(r"[A-Za-z]{1,3}[1-9][0-9]*", name):
             try:
@@ -1344,9 +1837,19 @@ def _tables(package, root, rels, part, sheet, cells, used_names, used_ids):
             id_ += 1
         used_ids.add(id_)
         original = getattr(table, "_part", None)
-        table_part = package.import_part(original) if original in package.original_parts else package.allocate("xl/tables", "table", "xml")
-        package.put(table_part, _table_xml(table, id_, cells, package.archive), "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml")
-        id_ = _add_rel(rels, "table", posixpath.relpath(table_part, posixpath.dirname(part)))
+        table_part = (
+            package.import_part(original)
+            if original in package.original_parts
+            else package.allocate("xl/tables", "table", "xml")
+        )
+        package.put(
+            table_part,
+            _table_xml(table, id_, cells, package.archive),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.table+xml",
+        )
+        id_ = _add_rel(
+            rels, "table", posixpath.relpath(table_part, posixpath.dirname(part))
+        )
         ET.SubElement(parts, q("tablePart"), {q("id", R): id_})
     parts.set("count", str(len(parts)))
     _replace(root, "tableParts", [parts] if len(parts) else [])
@@ -1399,15 +1902,44 @@ def _chart_xml(chart):
         if series.title is not None or series.title_reference is not None:
             tx = ET.Element(q("tx", C))
             if series.title_reference is not None:
-                ET.SubElement(ET.SubElement(tx, q("strRef", C)), q("f", C)).text = series.title_reference
+                ET.SubElement(
+                    ET.SubElement(tx, q("strRef", C)), q("f", C)
+                ).text = series.title_reference
             else:
                 ET.SubElement(tx, q("v", C)).text = series.title
             node.insert(2, tx)
         if series.categories:
-            ET.SubElement(ET.SubElement(ET.SubElement(node, q("cat", C)), q("strRef", C)), q("f", C)).text = series.categories
-        ET.SubElement(ET.SubElement(ET.SubElement(node, q("val", C)), q("numRef", C)), q("f", C)).text = series.values
-        series_order = ("idx", "order", "tx", "spPr", "invertIfNegative", "pictureOptions", "dPt", "dLbls", "trendline", "errBars", "cat", "val", "shape", "extLst")
-        node[:] = sorted(node, key=lambda n: series_order.index(local(n)) if local(n) in series_order else len(series_order))
+            ET.SubElement(
+                ET.SubElement(ET.SubElement(node, q("cat", C)), q("strRef", C)),
+                q("f", C),
+            ).text = series.categories
+        ET.SubElement(
+            ET.SubElement(ET.SubElement(node, q("val", C)), q("numRef", C)), q("f", C)
+        ).text = series.values
+        series_order = (
+            "idx",
+            "order",
+            "tx",
+            "spPr",
+            "invertIfNegative",
+            "pictureOptions",
+            "dPt",
+            "dLbls",
+            "trendline",
+            "errBars",
+            "cat",
+            "val",
+            "shape",
+            "extLst",
+        )
+        node[:] = sorted(
+            node,
+            key=lambda n: (
+                series_order.index(local(n))
+                if local(n) in series_order
+                else len(series_order)
+            ),
+        )
         bar.append(node)
     ET.SubElement(bar, q("gapWidth", C), {"val": str(chart.gapWidth)})
     if chart.overlap is not None:
@@ -1419,17 +1951,37 @@ def _chart_xml(chart):
         ids = ["10", "100"]
         for id_ in ids:
             ET.SubElement(bar, q("axId", C), {"val": id_})
-    for axis_tag, id_, cross, position, title in (("catAx", ids[0], ids[1], "l" if chart.type == "bar" else "b", chart.x_axis.title),
-                                                ("valAx", ids[1], ids[0], "b" if chart.type == "bar" else "l", chart.y_axis.title)):
+    for axis_tag, id_, cross, position, title in (
+        (
+            "catAx",
+            ids[0],
+            ids[1],
+            "l" if chart.type == "bar" else "b",
+            chart.x_axis.title,
+        ),
+        (
+            "valAx",
+            ids[1],
+            ids[0],
+            "b" if chart.type == "bar" else "l",
+            chart.y_axis.title,
+        ),
+    ):
         axis = plot.find(q(axis_tag, C))
         if axis is None:
             axis = ET.SubElement(plot, q(axis_tag, C))
             ET.SubElement(axis, q("axId", C), {"val": id_})
-            ET.SubElement(ET.SubElement(axis, q("scaling", C)), q("orientation", C), {"val": "minMax"})
+            ET.SubElement(
+                ET.SubElement(axis, q("scaling", C)),
+                q("orientation", C),
+                {"val": "minMax"},
+            )
             ET.SubElement(axis, q("delete", C), {"val": "0"})
             ET.SubElement(axis, q("axPos", C), {"val": position})
             if axis_tag == "valAx":
-                ET.SubElement(axis, q("numFmt", C), {"formatCode": "General", "sourceLinked": "1"})
+                ET.SubElement(
+                    axis, q("numFmt", C), {"formatCode": "General", "sourceLinked": "1"}
+                )
             ET.SubElement(axis, q("majorTickMark", C), {"val": "none"})
             ET.SubElement(axis, q("minorTickMark", C), {"val": "none"})
             ET.SubElement(axis, q("tickLblPos", C), {"val": "nextTo"})
@@ -1439,14 +1991,105 @@ def _chart_xml(chart):
             axis.remove(old)
         if title is not None:
             axis.append(_chart_title(title))
-        axis_order = ("axId", "scaling", "delete", "axPos", "majorGridlines", "minorGridlines", "title", "numFmt", "majorTickMark", "minorTickMark", "tickLblPos", "spPr", "txPr", "crossAx", "crosses", "crossesAt", "auto", "lblAlgn", "lblOffset", "tickLblSkip", "tickMarkSkip", "noMultiLvlLbl", "crossBetween", "majorUnit", "minorUnit", "dispUnits", "extLst")
-        axis[:] = sorted(axis, key=lambda n: axis_order.index(local(n)) if local(n) in axis_order else len(axis_order))
-    bar_order = ("barDir", "grouping", "varyColors", "ser", "dLbls", "gapWidth", "overlap", "serLines", "axId", "extLst")
-    bar[:] = sorted(bar, key=lambda n: bar_order.index(local(n)) if local(n) in bar_order else len(bar_order))
-    body_order = ("title", "autoTitleDeleted", "pivotFmts", "view3D", "floor", "sideWall", "backWall", "plotArea", "legend", "plotVisOnly", "dispBlanksAs", "showDLblsOverMax", "extLst")
-    body[:] = sorted(body, key=lambda n: body_order.index(local(n)) if local(n) in body_order else len(body_order))
-    root_order = ("date1904", "lang", "roundedCorners", "AlternateContent", "style", "clrMapOvr", "pivotSource", "protection", "chart", "spPr", "txPr", "externalData", "printSettings", "userShapes", "extLst")
-    root[:] = sorted(root, key=lambda n: root_order.index(local(n)) if local(n) in root_order else len(root_order))
+        axis_order = (
+            "axId",
+            "scaling",
+            "delete",
+            "axPos",
+            "majorGridlines",
+            "minorGridlines",
+            "title",
+            "numFmt",
+            "majorTickMark",
+            "minorTickMark",
+            "tickLblPos",
+            "spPr",
+            "txPr",
+            "crossAx",
+            "crosses",
+            "crossesAt",
+            "auto",
+            "lblAlgn",
+            "lblOffset",
+            "tickLblSkip",
+            "tickMarkSkip",
+            "noMultiLvlLbl",
+            "crossBetween",
+            "majorUnit",
+            "minorUnit",
+            "dispUnits",
+            "extLst",
+        )
+        axis[:] = sorted(
+            axis,
+            key=lambda n: (
+                axis_order.index(local(n))
+                if local(n) in axis_order
+                else len(axis_order)
+            ),
+        )
+    bar_order = (
+        "barDir",
+        "grouping",
+        "varyColors",
+        "ser",
+        "dLbls",
+        "gapWidth",
+        "overlap",
+        "serLines",
+        "axId",
+        "extLst",
+    )
+    bar[:] = sorted(
+        bar,
+        key=lambda n: (
+            bar_order.index(local(n)) if local(n) in bar_order else len(bar_order)
+        ),
+    )
+    body_order = (
+        "title",
+        "autoTitleDeleted",
+        "pivotFmts",
+        "view3D",
+        "floor",
+        "sideWall",
+        "backWall",
+        "plotArea",
+        "legend",
+        "plotVisOnly",
+        "dispBlanksAs",
+        "showDLblsOverMax",
+        "extLst",
+    )
+    body[:] = sorted(
+        body,
+        key=lambda n: (
+            body_order.index(local(n)) if local(n) in body_order else len(body_order)
+        ),
+    )
+    root_order = (
+        "date1904",
+        "lang",
+        "roundedCorners",
+        "AlternateContent",
+        "style",
+        "clrMapOvr",
+        "pivotSource",
+        "protection",
+        "chart",
+        "spPr",
+        "txPr",
+        "externalData",
+        "printSettings",
+        "userShapes",
+        "extLst",
+    )
+    root[:] = sorted(
+        root,
+        key=lambda n: (
+            root_order.index(local(n)) if local(n) in root_order else len(root_order)
+        ),
+    )
     return root
 
 
@@ -1463,8 +2106,12 @@ def _chart_anchor(chart, id_, object_id):
             origin.find(q("row", XDR)).text = str(row - 1)
             end = anchor.find(q("to", XDR))
             if end is not None:
-                end.find(q("col", XDR)).text = str(int(end.findtext(q("col", XDR))) + col - 1 - old_col)
-                end.find(q("row", XDR)).text = str(int(end.findtext(q("row", XDR))) + row - 1 - old_row)
+                end.find(q("col", XDR)).text = str(
+                    int(end.findtext(q("col", XDR))) + col - 1 - old_col
+                )
+                end.find(q("row", XDR)).text = str(
+                    int(end.findtext(q("row", XDR))) + row - 1 - old_row
+                )
         extent = anchor.find(q("ext", XDR))
         if extent is not None and isinstance(chart, BarChart):
             extent.set("cx", str(round(chart.width * 360000)))
@@ -1475,12 +2122,28 @@ def _chart_anchor(chart, id_, object_id):
         return anchor
     anchor = ET.Element(q("oneCellAnchor", XDR))
     origin = ET.SubElement(anchor, q("from", XDR))
-    for name, value in (("col", col - 1), ("colOff", 0), ("row", row - 1), ("rowOff", 0)):
+    for name, value in (
+        ("col", col - 1),
+        ("colOff", 0),
+        ("row", row - 1),
+        ("rowOff", 0),
+    ):
         ET.SubElement(origin, q(name, XDR)).text = str(value)
-    ET.SubElement(anchor, q("ext", XDR), {"cx": str(round(chart.width * 360000)), "cy": str(round(chart.height * 360000))})
+    ET.SubElement(
+        anchor,
+        q("ext", XDR),
+        {
+            "cx": str(round(chart.width * 360000)),
+            "cy": str(round(chart.height * 360000)),
+        },
+    )
     frame = ET.SubElement(anchor, q("graphicFrame", XDR), {"macro": ""})
     properties = ET.SubElement(frame, q("nvGraphicFramePr", XDR))
-    ET.SubElement(properties, q("cNvPr", XDR), {"id": str(object_id), "name": "Chart %d" % object_id})
+    ET.SubElement(
+        properties,
+        q("cNvPr", XDR),
+        {"id": str(object_id), "name": f"Chart {object_id:d}"},
+    )
     ET.SubElement(properties, q("cNvGraphicFramePr", XDR))
     transform = ET.SubElement(frame, q("xfrm", XDR))
     ET.SubElement(transform, q("off", A), {"x": "0", "y": "0"})
@@ -1511,7 +2174,11 @@ def _drawings(package, root, rels, part, sheet):
         if loaded and drawing_part in package.original_parts:
             source_drawing = xml(package.original_parts[drawing_part])
             source_rel_data = package.original_parts.get(_rels_path(drawing_part))
-            source_rels = xml(source_rel_data) if source_rel_data else ET.Element(q("Relationships", P))
+            source_rels = (
+                xml(source_rel_data)
+                if source_rel_data
+                else ET.Element(q("Relationships", P))
+            )
         elif drawing_part in package.archive.names:
             source_drawing = package.archive.root(drawing_part)
             source_rels, _ = _relationships(package.archive, drawing_part)
@@ -1525,7 +2192,12 @@ def _drawings(package, root, rels, part, sheet):
                 # Patched to a relative path after allocating the destination.
             else:
                 target = source_rel.get("Target")
-            new_id = _add_rel(drawing_rels, source_rel.get("Type").rsplit("/", 1)[-1], target, source_rel.get("TargetMode") == "External")
+            new_id = _add_rel(
+                drawing_rels,
+                source_rel.get("Type").rsplit("/", 1)[-1],
+                target,
+                source_rel.get("TargetMode") == "External",
+            )
             relmap[source_rel.get("Id")] = new_id
         for anchor in source_drawing:
             if anchor.find(".//" + q("chart", C)) is not None:
@@ -1543,7 +2215,10 @@ def _drawings(package, root, rels, part, sheet):
     drawing_part = package.allocate("xl/drawings", "drawing", "xml")
     for rel in drawing_rels:
         if rel.get("TargetMode") != "External":
-            rel.set("Target", posixpath.relpath(rel.get("Target"), posixpath.dirname(drawing_part)))
+            rel.set(
+                "Target",
+                posixpath.relpath(rel.get("Target"), posixpath.dirname(drawing_part)),
+            )
     object_ids = [int(n.get("id", "0")) for n in drawing.iter(q("cNvPr", XDR))]
     object_id = max(object_ids, default=0) + 1
     for chart in sheet.charts:
@@ -1553,15 +2228,31 @@ def _drawings(package, root, rels, part, sheet):
         else:
             chart_part = package.allocate("xl/charts", "chart", "xml")
         if isinstance(chart, BarChart):
-            package.put(chart_part, _chart_xml(chart), "application/vnd.openxmlformats-officedocument.drawingml.chart+xml")
+            package.put(
+                chart_part,
+                _chart_xml(chart),
+                "application/vnd.openxmlformats-officedocument.drawingml.chart+xml",
+            )
         elif original not in package.original_parts:
-            raise TypeError("Only BarChart or loaded opaque chart objects can be serialized")
-        id_ = _add_rel(drawing_rels, "chart", posixpath.relpath(chart_part, posixpath.dirname(drawing_part)))
+            raise TypeError(
+                "Only BarChart or loaded opaque chart objects can be serialized"
+            )
+        id_ = _add_rel(
+            drawing_rels,
+            "chart",
+            posixpath.relpath(chart_part, posixpath.dirname(drawing_part)),
+        )
         drawing.append(_chart_anchor(chart, id_, object_id))
         object_id += 1
-    package.put(drawing_part, drawing, "application/vnd.openxmlformats-officedocument.drawing+xml")
+    package.put(
+        drawing_part,
+        drawing,
+        "application/vnd.openxmlformats-officedocument.drawing+xml",
+    )
     package.put(_rels_path(drawing_part), drawing_rels)
-    id_ = _add_rel(rels, "drawing", posixpath.relpath(drawing_part, posixpath.dirname(part)))
+    id_ = _add_rel(
+        rels, "drawing", posixpath.relpath(drawing_part, posixpath.dirname(part))
+    )
     _replace(root, "drawing", [ET.Element(q("drawing"), {q("id", R): id_})])
 
 
@@ -1571,8 +2262,22 @@ def _sheet_other_relationships(package, root, rels, part, sheet):
     if template is None:
         return
     # Restore unmodeled worksheet features, rebasing all relationship IDs.
-    modeled = {"sheetData", "dimension", "sheetPr", "sheetViews", "cols", "mergeCells", "autoFilter",
-               "sheetProtection", "pageSetup", "dataValidations", "conditionalFormatting", "hyperlinks", "tableParts", "drawing"}
+    modeled = {
+        "sheetData",
+        "dimension",
+        "sheetPr",
+        "sheetViews",
+        "cols",
+        "mergeCells",
+        "autoFilter",
+        "sheetProtection",
+        "pageSetup",
+        "dataValidations",
+        "conditionalFormatting",
+        "hyperlinks",
+        "tableParts",
+        "drawing",
+    }
     for original in template:
         tag = local(original)
         if tag in modeled:
@@ -1583,8 +2288,22 @@ def _sheet_other_relationships(package, root, rels, part, sheet):
                 if key.startswith("{" + R + "}") and value in original_rels:
                     rel = original_rels[value]
                     path = _target(sheet._part, rel)
-                    target = posixpath.relpath(package.import_part(path), posixpath.dirname(part)) if path else rel.get("Target")
-                    child.set(key, _add_rel(rels, rel.get("Type").rsplit("/", 1)[-1], target, rel.get("TargetMode") == "External"))
+                    target = (
+                        posixpath.relpath(
+                            package.import_part(path), posixpath.dirname(part)
+                        )
+                        if path
+                        else rel.get("Target")
+                    )
+                    child.set(
+                        key,
+                        _add_rel(
+                            rels,
+                            rel.get("Type").rsplit("/", 1)[-1],
+                            target,
+                            rel.get("TargetMode") == "External",
+                        ),
+                    )
         _replace(root, tag, [node])
     # pageSetup is modeled, but its printer-settings relationship is not.
     for node in root.findall(q("pageSetup")):
@@ -1593,22 +2312,46 @@ def _sheet_other_relationships(package, root, rels, part, sheet):
             rel = original_rels[old_id]
             path = _target(sheet._part, rel)
             if path:
-                target = posixpath.relpath(package.import_part(path), posixpath.dirname(part))
+                target = posixpath.relpath(
+                    package.import_part(path), posixpath.dirname(part)
+                )
                 node.set(q("id", R), _add_rel(rels, "printerSettings", target))
 
 
 def _write_properties(package, metadata, root_rels, titles):
     props = metadata.properties
-    for kind, path, ns, tag, mapping, private in (("core-properties", "docProps/core.xml", CP, "coreProperties", _CORE_FIELDS, "_core_properties"),
-                                               ("extended-properties", "docProps/app.xml", EP, "Properties", _APP_FIELDS, "_extended_properties")):
-        existing = next((n for n in root_rels if n.get("Type", "").endswith("/" + kind)), None)
+    for kind, path, ns, tag, mapping, private in (
+        (
+            "core-properties",
+            "docProps/core.xml",
+            CP,
+            "coreProperties",
+            _CORE_FIELDS,
+            "_core_properties",
+        ),
+        (
+            "extended-properties",
+            "docProps/app.xml",
+            EP,
+            "Properties",
+            _APP_FIELDS,
+            "_extended_properties",
+        ),
+    ):
+        existing = next(
+            (n for n in root_rels if n.get("Type", "").endswith("/" + kind)), None
+        )
         if existing is not None:
             path = _target("", existing) or path
         root = deepcopy(getattr(metadata, private, None))
         if root is None:
             root = package.archive.root(path, ET.Element(q(tag, ns)))
         for key, field_tag in mapping.items():
-            qualified = q(field_tag[1], field_tag[0]) if isinstance(field_tag, tuple) else q(field_tag, ns)
+            qualified = (
+                q(field_tag[1], field_tag[0])
+                if isinstance(field_tag, tuple)
+                else q(field_tag, ns)
+            )
             for old in root.findall(qualified):
                 root.remove(old)
             value = getattr(props, key)
@@ -1617,32 +2360,60 @@ def _write_properties(package, metadata, root_rels, titles):
                 if isinstance(value, datetime):
                     if value.tzinfo is None:
                         value = value.replace(tzinfo=timezone.utc)
-                    value = value.astimezone(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+                    value = (
+                        value.astimezone(timezone.utc)
+                        .isoformat(timespec="seconds")
+                        .replace("+00:00", "Z")
+                    )
                 node.text = str(value)
                 if key in ("created", "modified"):
                     node.set(q("type", XSI), "dcterms:W3CDTF")
         if ns == EP:
-            for old in root.findall(q("TitlesOfParts", EP)) + root.findall(q("HeadingPairs", EP)):
+            for old in root.findall(q("TitlesOfParts", EP)) + root.findall(
+                q("HeadingPairs", EP)
+            ):
                 root.remove(old)
-            vector = ET.SubElement(ET.SubElement(root, q("TitlesOfParts", EP)), q("vector", VT), {"size": str(len(titles)), "baseType": "lpstr"})
+            vector = ET.SubElement(
+                ET.SubElement(root, q("TitlesOfParts", EP)),
+                q("vector", VT),
+                {"size": str(len(titles)), "baseType": "lpstr"},
+            )
             for title in titles:
                 ET.SubElement(vector, q("lpstr", VT)).text = title
-            vector = ET.SubElement(ET.SubElement(root, q("HeadingPairs", EP)), q("vector", VT), {"size": "2", "baseType": "variant"})
-            ET.SubElement(ET.SubElement(vector, q("variant", VT)), q("lpstr", VT)).text = "Worksheets"
-            ET.SubElement(ET.SubElement(vector, q("variant", VT)), q("i4", VT)).text = str(len(titles))
-        package.put(path, root, "application/vnd.openxmlformats-package.core-properties+xml" if ns == CP else "application/vnd.openxmlformats-officedocument.extended-properties+xml")
+            vector = ET.SubElement(
+                ET.SubElement(root, q("HeadingPairs", EP)),
+                q("vector", VT),
+                {"size": "2", "baseType": "variant"},
+            )
+            ET.SubElement(
+                ET.SubElement(vector, q("variant", VT)), q("lpstr", VT)
+            ).text = "Worksheets"
+            ET.SubElement(
+                ET.SubElement(vector, q("variant", VT)), q("i4", VT)
+            ).text = str(len(titles))
+        package.put(
+            path,
+            root,
+            "application/vnd.openxmlformats-package.core-properties+xml"
+            if ns == CP
+            else "application/vnd.openxmlformats-officedocument.extended-properties+xml",
+        )
         if existing is None:
             id_ = _add_rel(root_rels, kind, path)
             if ns == CP:
-                next(n for n in root_rels if n.get("Id") == id_).set("Type", "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties")
+                next(n for n in root_rels if n.get("Id") == id_).set(
+                    "Type",
+                    "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties",
+                )
 
 
-def apply_metadata(source, target, metadata):
+def apply_metadata(source, target, metadata, *, native_styles=False):
     """Overlay metadata on native XLSX bytes, then write target; return None.
 
     Paths and seekable binary streams are supported (not raw bytes). Sheet
     metadata is matched by exact title. Unknown titles and an all-hidden
-    workbook raise ValueError before the destination is opened.
+    workbook raise ValueError before the destination is opened. If native_styles
+    is true, retain the native style IDs instead of rebuilding cell styles.
     """
     if not isinstance(metadata, MetadataBook):
         raise TypeError("metadata must be a MetadataBook")
@@ -1652,13 +2423,20 @@ def apply_metadata(source, target, metadata):
         titles = [n.get("name") for n, _ in sheets]
         unknown = set(metadata.sheets) - set(titles)
         if unknown:
-            raise ValueError("Metadata refers to missing native sheets: " + ", ".join(sorted(unknown)))
+            raise ValueError(
+                "Metadata refers to missing native sheets: "
+                + ", ".join(sorted(unknown))
+            )
         package = _Package(archive, metadata)
         styles = _Styles(archive.root(style_part) if style_part else None)
         book_rels, _ = _relationships(archive, book_part)
         if not style_part:
             style_part = package.allocate(posixpath.dirname(book_part), "styles", "xml")
-            _add_rel(book_rels, "styles", posixpath.relpath(style_part, posixpath.dirname(book_part)))
+            _add_rel(
+                book_rels,
+                "styles",
+                posixpath.relpath(style_part, posixpath.dirname(book_part)),
+            )
         # Reserve table IDs/names from sheets not being overlaid.
         used_names, used_ids = set(), set()
         for node, part in sheets:
@@ -1683,20 +2461,33 @@ def apply_metadata(source, target, metadata):
             if root is None:
                 raise ValueError("Native worksheet is missing: " + part)
             rels, _ = _relationships(archive, part)
-            cells = _sheet_basic(root, sheet, styles)
+            cells = _sheet_basic(root, sheet, styles, native_styles=native_styles)
             _sheet_other_relationships(package, root, rels, part, sheet)
             _hyperlinks(root, rels, sheet)
             _comments(package, root, rels, part, sheet)
             _tables(package, root, rels, part, sheet, cells, used_names, used_ids)
             _drawings(package, root, rels, part, sheet)
-            root[:] = sorted(root, key=lambda n: _SHEET_ORDER.index(local(n)) if local(n) in _SHEET_ORDER else len(_SHEET_ORDER))
+            root[:] = sorted(
+                root,
+                key=lambda n: (
+                    _SHEET_ORDER.index(local(n))
+                    if local(n) in _SHEET_ORDER
+                    else len(_SHEET_ORDER)
+                ),
+            )
             package.put(part, root)
             if len(rels):
                 package.put(_rels_path(part), rels)
-        if sheets and not any(node.get("state", "visible") == "visible" for node, _ in sheets):
+        if sheets and not any(
+            node.get("state", "visible") == "visible" for node, _ in sheets
+        ):
             raise ValueError("At least one worksheet must be visible")
         # Ensure workbook activeTab does not point to a hidden or missing sheet.
-        visible = [index for index, (node, _) in enumerate(sheets) if node.get("state", "visible") == "visible"]
+        visible = [
+            index
+            for index, (node, _) in enumerate(sheets)
+            if node.get("state", "visible") == "visible"
+        ]
         for view in workbook.findall(q("bookViews") + "/" + q("workbookView")):
             if visible and int(view.get("activeTab", "0")) not in visible:
                 view.set("activeTab", str(visible[0]))
@@ -1710,15 +2501,44 @@ def apply_metadata(source, target, metadata):
             node.text = name.attr_text
             names.append(node)
         _replace(workbook, "definedNames", [names] if len(names) else [])
-        order = ("fileVersion", "fileSharing", "workbookPr", "workbookProtection", "bookViews", "sheets", "functionGroups", "externalReferences", "definedNames", "calcPr", "oleSize", "customWorkbookViews", "pivotCaches", "smartTagPr", "smartTagTypes", "webPublishing", "fileRecoveryPr", "webPublishObjects", "extLst")
-        workbook[:] = sorted(workbook, key=lambda n: order.index(local(n)) if local(n) in order else len(order))
+        order = (
+            "fileVersion",
+            "fileSharing",
+            "workbookPr",
+            "workbookProtection",
+            "bookViews",
+            "sheets",
+            "functionGroups",
+            "externalReferences",
+            "definedNames",
+            "calcPr",
+            "oleSize",
+            "customWorkbookViews",
+            "pivotCaches",
+            "smartTagPr",
+            "smartTagTypes",
+            "webPublishing",
+            "fileRecoveryPr",
+            "webPublishObjects",
+            "extLst",
+        )
+        workbook[:] = sorted(
+            workbook,
+            key=lambda n: order.index(local(n)) if local(n) in order else len(order),
+        )
         package.put(book_part, workbook)
         package.put(_rels_path(book_part), book_rels)
-        package.put(style_part, styles.finish(), "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml")
+        package.put(
+            style_part,
+            styles.finish(),
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml",
+        )
         root_rels, _ = _relationships(archive, "")
         _write_properties(package, metadata, root_rels, titles)
         package.put("_rels/.rels", root_rels)
-        package.default("rels", "application/vnd.openxmlformats-package.relationships+xml")
+        package.default(
+            "rels", "application/vnd.openxmlformats-package.relationships+xml"
+        )
         package.default("xml", "application/xml")
         package.put("[Content_Types].xml", package.content_types)
         # Stage before opening target: safe for in-place saves and failed overlays.
@@ -1741,4 +2561,10 @@ def apply_metadata(source, target, metadata):
             stream.write(payload)
 
 
-__all__ = ["MetadataBook", "MetadataSheet", "CellMetadata", "load_metadata", "apply_metadata"]
+__all__ = [
+    "CellMetadata",
+    "MetadataBook",
+    "MetadataSheet",
+    "apply_metadata",
+    "load_metadata",
+]

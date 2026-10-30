@@ -75,6 +75,9 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      - name: Run Rust core and OOXML regressions
+        run: cargo test -p rpyxl-core -p rpyxl-ooxml --verbose
+
   test:
     name: Test Windows wheel (Python ${{ matrix.python }})
     needs: build

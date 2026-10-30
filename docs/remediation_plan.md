@@ -24,7 +24,7 @@ Implementation is being kept on `fix/text-fidelity`; no release is authorized by
 
 - Cell values stay in the Rust engine. Python wrappers hold sparse rich-feature metadata; this is not an openpyxl backend and adds no runtime dependency on openpyxl.
 - `workbook.py` and `worksheet.py` become packages to support their public feature submodule import paths. `Native*` exports are available for callers intentionally using unwrapped native types.
-- New value-only workbooks retain the direct Rust save path. Loaded editable workbooks and books using rich metadata need an extra ZIP/XML overlay pass. Original performance figures do not establish performance of this branch.
+- New value-only and cell-style-only workbooks use one native Rust save pass. Style components are snapshotted and serialized once per unique value, transferred as interned records, and combined with number formats in the Rust writer. Loaded original metadata and other rich features still require a conservative overlay, but cell styles are not rebuilt there. The new native writer path needs a rebuilt wheel and full validation; no performance improvement is claimed from static checks.
 - Metadata worksheet parsing discards value/formula payloads during parsing, but input bytes, retained metadata, and dependency parts still consume memory. Read-only value iteration avoids loading rich metadata; first metadata access loads it for all sheets with a warning.
 - Unknown package parts are retained only on a best-effort basis. Reference-sensitive operations are rejected where correct rewriting is not implemented. Do not advertise full drop-in compatibility before acceptance testing.
 - No testing or publication results are implied by successful syntax/format checks.

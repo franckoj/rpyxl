@@ -19,16 +19,17 @@ create tags or releases, or change the package version.
 1. Builds a release-mode Windows x64 wheel with Python 3.11 and Rust on GitHub.
 2. Uploads the wheel and `build-info.json`, recording the source commit, filename,
    build Python, and SHA-256 checksum.
-3. Installs that exact wheel in separate Python 3.11 and 3.14 jobs, without building
-   the extension again or setting up Rust in the test jobs.
-4. Runs the unit, compatibility, and integration Python suites against the installed
+3. Runs the native Rust core and OOXML tests, including rich-style serialization.
+4. After the native tests pass, installs that exact wheel in separate Python 3.11
+   and 3.14 jobs, without rebuilding or setting up Rust in those jobs.
+5. Runs the unit, compatibility, and integration Python suites against the installed
    package, including the new remediation regressions.
-5. Uploads a pytest log and JUnit report for each test Python, even after test failures.
+6. Uploads a pytest log and JUnit report for each test Python, even after test failures.
 
-The wheel artifact is available after the build succeeds even if the regression
-suite later fails. Build failures cannot produce a usable wheel. The workflow does
-not run the native Rust unit suite or performance benchmarks; those are separate
-validation tasks. Passing Python tests is not proof of complete openpyxl compatibility.
+The wheel artifact is uploaded before the native regressions, so it remains
+available if a later native or Python test fails. A failed wheel build cannot
+produce a usable artifact. Performance benchmarks remain a separate validation
+task. Passing tests is not proof of complete openpyxl compatibility.
 
 ## Download and install on Windows
 
