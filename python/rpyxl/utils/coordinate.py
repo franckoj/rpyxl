@@ -48,6 +48,8 @@ def range_boundaries(range_string: str) -> tuple[int, int, int, int]:
     clean = range_string.strip()
     if ":" in clean:
         parts = clean.split(":")
+        if len(parts) != 2:
+            raise ValueError(f"Invalid range format: {range_string}")
         min_row, min_col = coordinate_to_tuple(parts[0])
         max_row, max_col = coordinate_to_tuple(parts[1])
         return (
