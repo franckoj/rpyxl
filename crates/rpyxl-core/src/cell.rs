@@ -79,6 +79,10 @@ pub struct Cell {
     pub value: CellValue,
     pub number_format: Option<String>,
     pub rich_style: Option<std::sync::Arc<RichStyle>>,
+    /// One-based original XF index; NonZero keeps provenance compact.
+    pub source_xf_id: Option<std::num::NonZeroU32>,
+    /// Explicit XF zero overrides row/column defaults; absence can inherit them.
+    pub source_xf_explicit: bool,
     pub comment: Option<String>,
     pub hyperlink: Option<String>,
 }
@@ -91,9 +95,15 @@ impl Cell {
             value,
             number_format: None,
             rich_style: None,
+            source_xf_id: None,
+            source_xf_explicit: false,
             comment: None,
             hyperlink: None,
         }
+    }
+
+    pub fn source_xf_index(&self) -> Option<usize> {
+        self.source_xf_id.map(|id| (id.get() - 1) as usize)
     }
 
     pub fn coordinate(&self) -> RpyxlResult<String> {

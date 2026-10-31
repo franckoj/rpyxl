@@ -970,8 +970,8 @@ def _capture_dependencies(archive, book, part, seen=None):
                 _capture_dependencies(archive, book, path, seen)
 
 
-def load_metadata(source):
-    """Read editable metadata without decoding or retaining native cell values."""
+def load_metadata(source, *, cell_styles=True):
+    """Read feature metadata; native-style callers can omit per-cell style models."""
     archive = _Archive(source)
     try:
         book = MetadataBook()
@@ -1018,9 +1018,12 @@ def load_metadata(source):
             )
             sheet._part = part
             sheet._rels, rels = _relationships(archive, part)
-            for cell in root.findall(q("sheetData") + "/" + q("row") + "/" + q("c")):
-                if "s" in cell.attrib:
-                    sheet.cells[cell.get("r")] = styles.read(int(cell.get("s")))
+            if cell_styles:
+                for cell in root.findall(
+                    q("sheetData") + "/" + q("row") + "/" + q("c")
+                ):
+                    if "s" in cell.attrib:
+                        sheet.cells[cell.get("r")] = styles.read(int(cell.get("s")))
             for merged in root.findall(q("mergeCells") + "/" + q("mergeCell")):
                 sheet.merged_cells.add(merged.get("ref"))
             for col in root.findall(q("cols") + "/" + q("col")):
@@ -1029,7 +1032,14 @@ def load_metadata(source):
             for row in root.findall(q("sheetData") + "/" + q("row")):
                 if any(
                     key in row.attrib
-                    for key in ("ht", "hidden", "outlineLevel", "collapsed")
+                    for key in (
+                        "ht",
+                        "hidden",
+                        "outlineLevel",
+                        "collapsed",
+                        "s",
+                        "customFormat",
+                    )
                 ):
                     dimension = _model(
                         RowDimension,
@@ -1374,7 +1384,17 @@ def _sheet_basic(root, sheet, styles, *, native_styles=False):
         row = rows.get(index)
         if row is None:
             row = rows[index] = ET.SubElement(data, q("row"), {"r": str(index)})
-        for key in ("ht", "customHeight", "hidden", "outlineLevel", "collapsed"):
+        modeled = ("ht", "customHeight", "hidden", "outlineLevel", "collapsed")
+        remembered = getattr(dimension, "_xml", None)
+        if remembered is not None:
+            # Style IDs remain valid against the original stylesheet base, but
+            # the remembered row coordinate may predate a structural shift.
+            row.attrib.update(
+                (key, value)
+                for key, value in remembered.attrib.items()
+                if key not in ("r", *modeled)
+            )
+        for key in modeled:
             row.attrib.pop(key, None)
         row.attrib.update(attrs(dimension, rename={"height": "ht"}))
         if dimension.height is not None:
@@ -1429,10 +1449,10 @@ def _sheet_basic(root, sheet, styles, *, native_styles=False):
         if high < low:
             raise ValueError("Reversed column dimension")
         node = deepcopy(getattr(dimension, "_xml", ET.Element(q("col"))))
+        # Keep the remembered style as a fallback when generated cols are absent.
         for key in (
             "min",
             "max",
-            "style",
             "width",
             "hidden",
             "bestFit",

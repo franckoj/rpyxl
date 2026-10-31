@@ -1,8 +1,13 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use crate::cell::RichStyle;
 use crate::coordinate::validate_sheet_title;
 use crate::error::{RpyxlError, RpyxlResult};
+use crate::package::PackageTemplate;
 use crate::worksheet::Worksheet;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Workbook {
     sheets: Vec<Worksheet>,
     active_index: usize,
@@ -10,6 +15,24 @@ pub struct Workbook {
     pub read_only: bool,
     /// Whether numeric dates use the 1904-01-01 epoch instead of Excel's 1900 epoch.
     pub date_1904: bool,
+    pub package_template: Option<Arc<PackageTemplate>>,
+    pub source_styles_xml: Option<String>,
+    source_styles: Vec<Arc<RichStyle>>,
+    source_style_ids: HashMap<usize, usize>,
+}
+
+impl PartialEq for Workbook {
+    fn eq(&self, other: &Self) -> bool {
+        // source_style_ids is a pointer-keyed lookup cache, not workbook content.
+        self.sheets == other.sheets
+            && self.active_index == other.active_index
+            && self.data_only == other.data_only
+            && self.read_only == other.read_only
+            && self.date_1904 == other.date_1904
+            && self.package_template == other.package_template
+            && self.source_styles_xml == other.source_styles_xml
+            && self.source_styles == other.source_styles
+    }
 }
 
 impl Default for Workbook {
@@ -27,6 +50,10 @@ impl Workbook {
             data_only: false,
             read_only: false,
             date_1904: false,
+            package_template: None,
+            source_styles_xml: None,
+            source_styles: Vec::new(),
+            source_style_ids: HashMap::new(),
         }
     }
 
@@ -37,7 +64,40 @@ impl Workbook {
             data_only,
             read_only,
             date_1904: false,
+            package_template: None,
+            source_styles_xml: None,
+            source_styles: Vec::new(),
+            source_style_ids: HashMap::new(),
         }
+    }
+
+    pub fn set_source_styles(&mut self, styles: Vec<Arc<RichStyle>>) {
+        self.source_style_ids = styles
+            .iter()
+            .enumerate()
+            .map(|(index, style)| (Arc::as_ptr(style) as usize, index))
+            .collect();
+        self.source_styles = styles;
+    }
+
+    pub fn source_styles(&self) -> &[Arc<RichStyle>] {
+        &self.source_styles
+    }
+
+    pub fn source_style_index(&self, style: &Arc<RichStyle>) -> Option<usize> {
+        self.source_style_ids
+            .get(&(Arc::as_ptr(style) as usize))
+            .copied()
+    }
+
+    pub fn can_preserve_package(&self) -> bool {
+        self.package_template.as_ref().is_some_and(|source| {
+            self.sheetnames() == source.sheet_names
+                && self.active_index == source.active_index
+                && self.date_1904 == source.date_1904
+                && self.sheets.len() == source.sheet_parts.len()
+                && self.sheets.iter().all(|sheet| sheet.xml_template.is_some())
+        })
     }
 
     pub fn is_data_only(&self) -> bool {
@@ -245,6 +305,73 @@ impl Workbook {
 mod tests {
     use super::*;
     use crate::cell::CellValue;
+
+    #[test]
+    fn test_equality_ignores_source_style_pointer_cache() {
+        let mut left = Workbook::new();
+        let mut right = Workbook::new();
+        for book in [&mut left, &mut right] {
+            let style = Arc::new(RichStyle {
+                font: Some("<font><b/></font>".into()),
+                ..RichStyle::default()
+            });
+            book.set_source_styles(vec![Arc::clone(&style)]);
+            book.source_styles_xml = Some("<styleSheet/>".into());
+            book.active_mut()
+                .set_cell_value(1, 1, CellValue::Int(7))
+                .unwrap();
+            book.active_mut().get_cell_mut(1, 1).unwrap().rich_style = Some(style);
+        }
+        assert_ne!(left.source_style_ids, right.source_style_ids);
+        assert_eq!(left.source_style_index(&left.source_styles()[0]), Some(0));
+        assert_eq!(right.source_style_index(&right.source_styles()[0]), Some(0));
+        assert_eq!(left.source_style_index(&right.source_styles()[0]), None);
+        assert_eq!(left, right);
+        assert_eq!(left, left.clone());
+
+        right.source_style_ids.clear();
+        assert_eq!(left, right);
+    }
+
+    #[test]
+    fn test_equality_includes_all_semantic_fields() {
+        let mut book = Workbook::new();
+        book.create_sheet(Some("Other"), None).unwrap();
+        let changes: &[fn(&mut Workbook)] = &[
+            |book| book.sheets[0].title = "Changed".into(),
+            |book| book.active_index = 1,
+            |book| book.data_only = true,
+            |book| book.read_only = true,
+            |book| book.date_1904 = true,
+            |book| {
+                book.package_template = Some(Arc::new(PackageTemplate {
+                    archive: Arc::from([]),
+                    workbook_path: "xl/workbook.xml".into(),
+                    styles_path: "xl/styles.xml".into(),
+                    styles_xml: "<styleSheet/>".into(),
+                    sheet_parts: Vec::new(),
+                    sheet_names: Vec::new(),
+                    active_index: 0,
+                    date_1904: false,
+                }));
+            },
+            |book| book.source_styles_xml = Some("<styleSheet/>".into()),
+            |book| book.set_source_styles(vec![Arc::new(RichStyle::default())]),
+        ];
+        for change in changes {
+            let mut changed = book.clone();
+            change(&mut changed);
+            assert_ne!(book, changed);
+        }
+
+        book.set_source_styles(vec![Arc::new(RichStyle::default())]);
+        let mut changed = book.clone();
+        changed.set_source_styles(vec![Arc::new(RichStyle {
+            alignment: Some("<alignment horizontal=\"right\"/>".into()),
+            ..RichStyle::default()
+        })]);
+        assert_ne!(book, changed);
+    }
 
     #[test]
     fn test_workbook_default() {

@@ -42,7 +42,15 @@ def metadata_property(name):
 
 def cell_metadata_property(name):
     def get(self):
-        cells = self.parent._metadata.cells
+        workbook = self.parent.parent
+        reader = workbook._native_style_reader
+        if reader is not None:
+            return workbook._style_pool.view(
+                lambda: reader.get(self, name),
+                lambda assigned: reader.set(self, name, assigned),
+                self.parent._check_writable,
+            )
+        cells = workbook._sheet_metadata(self.parent.title, full=False).cells
         coordinate = self.coordinate
         metadata = cells.get(coordinate)
         if metadata is None:
@@ -57,19 +65,27 @@ def cell_metadata_property(name):
             setattr(metadata, name, value)
         return pool.view(
             lambda: getattr(metadata, name),
-            lambda assigned: setattr(metadata, name, assigned),
+            lambda assigned: store(metadata, assigned),
             self.parent._check_writable,
         )
 
+    def store(metadata, value):
+        setattr(metadata, name, value)
+        metadata.style_dirty = True
+
     def set(self, value):
         self.parent._check_writable()
-        pool = self.parent.parent._style_pool
-        cells = self.parent._metadata.cells
+        workbook = self.parent.parent
+        pool = workbook._style_pool
+        if workbook._native_style_reader is not None:
+            workbook._native_style_reader.set(self, name, pool.assign(value))
+            return
+        cells = workbook._sheet_metadata(self.parent.title, full=False).cells
         coordinate = self.coordinate
         metadata = cells.get(coordinate)
         if metadata is None:
             metadata = cells[coordinate] = CellMetadata()
-        setattr(metadata, name, pool.assign(value))
+        store(metadata, pool.assign(value))
 
     return property(get, set)
 

@@ -6,10 +6,16 @@ use crate::coordinate::{
     MIN_ROW,
 };
 use crate::error::{RpyxlError, RpyxlResult};
+use crate::package::WorksheetTemplate;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Worksheet {
     pub title: String,
+    pub xml_template: Option<WorksheetTemplate>,
+    /// Cell payloads that the current model cannot safely regenerate.
+    pub unsupported_cell_content: bool,
+    /// Original merged ranges, in (min_row, min_col, max_row, max_col) order.
+    pub merged_ranges: Vec<(u32, u32, u32, u32)>,
     cells: BTreeMap<(u32, u32), Cell>,
     cached_min_row: Option<u32>,
     cached_max_row: Option<u32>,
@@ -23,6 +29,9 @@ impl Worksheet {
         validate_sheet_title(&title_str)?;
         Ok(Self {
             title: title_str,
+            xml_template: None,
+            unsupported_cell_content: false,
+            merged_ranges: Vec::new(),
             cells: BTreeMap::new(),
             cached_min_row: None,
             cached_max_row: None,
@@ -51,6 +60,12 @@ impl Worksheet {
 
     pub fn max_column(&self) -> u32 {
         self.cached_max_col.unwrap_or(MIN_COLUMN)
+    }
+
+    pub fn is_merged_cell(&self, row: u32, column: u32) -> bool {
+        self.merged_ranges.iter().any(|&(r1, c1, r2, c2)| {
+            (r1..=r2).contains(&row) && (c1..=c2).contains(&column) && (row, column) != (r1, c1)
+        })
     }
 
     pub fn is_empty(&self) -> bool {
@@ -249,6 +264,7 @@ impl Worksheet {
                 }
             }
         }
+        self.xml_template = None;
         let old_cells = std::mem::take(&mut self.cells);
         for ((mut row, mut col), mut cell) in old_cells {
             let pos = if rows { row } else { col };
@@ -297,6 +313,7 @@ impl Worksheet {
         if rows == 0 && cols == 0 {
             return Ok(());
         }
+        self.xml_template = None;
         let old_cells = std::mem::take(&mut self.cells);
         let mut moved = Vec::new();
         for ((row, col), mut cell) in old_cells {

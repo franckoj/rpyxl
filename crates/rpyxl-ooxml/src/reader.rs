@@ -1,22 +1,26 @@
 use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
+use std::num::NonZeroU32;
 use std::path::Path;
 use std::sync::Arc;
 
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use quick_xml::events::Event;
+use quick_xml::name::ResolveResult;
 use quick_xml::reader::Reader;
+use quick_xml::{NsReader, Writer};
 use zip::ZipArchive;
 
-use rpyxl_core::cell::CellValue;
+use rpyxl_core::cell::{Cell, CellValue};
 use rpyxl_core::coordinate::{coordinate_to_tuple, range_boundaries};
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
+use rpyxl_core::package::WorksheetTemplate;
 use rpyxl_core::workbook::Workbook;
 use rpyxl_core::worksheet::Worksheet;
 
 use crate::shared_strings::{decode_xml_text, SharedStringsTable};
-use crate::styles::Styles;
+use crate::styles::{utf8_declaration, Styles};
 
 #[derive(Debug, Clone)]
 pub struct SheetInfo {
@@ -35,6 +39,8 @@ pub struct XlsxPackage<R: Read + Seek> {
     pub sheets: Vec<SheetInfo>,
     pub shared_strings: Arc<SharedStringsTable>,
     pub styles: Arc<Styles>,
+    pub workbook_path: String,
+    pub styles_path: Option<String>,
     pub active_sheet_index: usize,
     pub data_only: bool,
     pub read_only: bool,
@@ -130,7 +136,8 @@ impl<R: Read + Seek> XlsxPackage<R> {
         for meta in sheet_metas {
             let rel_target = rels_map
                 .get(&meta.r_id)
-                .cloned()
+                .filter(|rel| !rel.external)
+                .map(|rel| rel.target.clone())
                 .unwrap_or_else(|| format!("worksheets/sheet{}.xml", meta.sheet_id));
             let full_target = normalize_zip_path(&base_dir, &rel_target);
             let dim = peek_sheet_dimension(&mut archive, &full_target);
@@ -162,17 +169,12 @@ impl<R: Read + Seek> XlsxPackage<R> {
         };
 
         // 5. Parse styles.xml if present
-        let mut styles = if let Some(styles_target) = find_rel_target(&rels_map, "styles") {
-            let full_styles_path = normalize_zip_path(&base_dir, &styles_target);
-            match archive.by_name(&full_styles_path) {
-                Ok(file) => Styles::from_reader(file)?,
-                Err(_) => Styles::default(),
-            }
-        } else {
-            match archive.by_name("xl/styles.xml") {
-                Ok(file) => Styles::from_reader(file)?,
-                Err(_) => Styles::default(),
-            }
+        let resolved_styles_path = find_rel_target(&rels_map, "styles")
+            .map(|target| normalize_zip_path(&base_dir, &target))
+            .unwrap_or_else(|| "xl/styles.xml".to_string());
+        let (mut styles, styles_path) = match archive.by_name(&resolved_styles_path) {
+            Ok(file) => (Styles::from_reader(file)?, Some(resolved_styles_path)),
+            Err(_) => (Styles::default(), None),
         };
 
         styles.date_1904 = date_1904;
@@ -182,6 +184,8 @@ impl<R: Read + Seek> XlsxPackage<R> {
             sheets,
             shared_strings: Arc::new(shared_strings),
             styles: Arc::new(styles),
+            workbook_path,
+            styles_path,
             active_sheet_index: active_idx,
             data_only,
             read_only,
@@ -196,6 +200,8 @@ impl<R: Read + Seek> XlsxPackage<R> {
     pub fn to_workbook(&mut self) -> RpyxlResult<Workbook> {
         let mut wb = Workbook::with_options(self.data_only, self.read_only);
         wb.date_1904 = self.styles.date_1904;
+        wb.set_source_styles(self.styles.rich_styles().to_vec());
+        wb.source_styles_xml = self.styles.source_xml().map(str::to_owned);
 
         for sheet_info in &self.sheets {
             let mut ws = Worksheet::new(&sheet_info.name)?;
@@ -343,13 +349,22 @@ fn get_rels_path(file_path: &str) -> String {
     let filename = path.file_name().unwrap_or_default().to_string_lossy();
     let rels_filename = format!("{}.rels", filename);
     let rels_dir = parent.join("_rels");
-    rels_dir.join(rels_filename).to_string_lossy().to_string()
+    rels_dir
+        .join(rels_filename)
+        .to_string_lossy()
+        .replace('\\', "/")
+}
+
+struct Relationship {
+    target: String,
+    kind: String,
+    external: bool,
 }
 
 fn parse_relationships<R: Read + Seek>(
     archive: &mut ZipArchive<R>,
     rels_path: &str,
-) -> RpyxlResult<HashMap<String, String>> {
+) -> RpyxlResult<HashMap<String, Relationship>> {
     let mut map = HashMap::new();
     let file = match archive.by_name(rels_path) {
         Ok(f) => f,
@@ -365,19 +380,31 @@ fn parse_relationships<R: Read + Seek>(
                 if e.local_name().as_ref() == b"Relationship" {
                     let mut id = None;
                     let mut target = None;
+                    let mut kind = String::new();
+                    let mut external = false;
                     for attr in e.attributes().flatten() {
-                        if attr.key.local_name().as_ref() == b"Id" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                id = Some(v.to_string());
-                            }
-                        } else if attr.key.local_name().as_ref() == b"Target" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                target = Some(v.to_string());
-                            }
+                        let value =
+                            attr.decode_and_unescape_value(reader.decoder())
+                                .map_err(|err| {
+                                    RpyxlError::IoError(format!("Invalid relationship: {err}"))
+                                })?;
+                        match attr.key.local_name().as_ref() {
+                            b"Id" => id = Some(value.into_owned()),
+                            b"Target" => target = Some(value.into_owned()),
+                            b"Type" => kind = value.into_owned(),
+                            b"TargetMode" => external = value == "External",
+                            _ => {}
                         }
                     }
-                    if let (Some(i), Some(t)) = (id, target) {
-                        map.insert(i, t);
+                    if let (Some(id), Some(target)) = (id, target) {
+                        map.insert(
+                            id,
+                            Relationship {
+                                target,
+                                kind,
+                                external,
+                            },
+                        );
                     }
                 }
             }
@@ -472,33 +499,265 @@ fn parse_workbook_xml<R: Read + Seek>(
     Ok((sheets, active_tab, date_1904))
 }
 
-fn find_rel_target(rels_map: &HashMap<String, String>, keyword: &str) -> Option<String> {
-    for target in rels_map.values() {
-        if target.contains(keyword) {
-            return Some(target.clone());
-        }
-    }
-    None
+fn find_rel_target(rels_map: &HashMap<String, Relationship>, keyword: &str) -> Option<String> {
+    rels_map
+        .values()
+        .find(|rel| !rel.external && rel.kind.rsplit('/').next() == Some(keyword))
+        .map(|rel| rel.target.clone())
 }
 
 fn get_base_dir(file_path: &str) -> String {
     let p = Path::new(file_path);
     p.parent()
-        .map(|d| d.to_string_lossy().to_string())
+        .map(|d| d.to_string_lossy().replace('\\', "/"))
         .unwrap_or_default()
 }
 
 fn normalize_zip_path(base_dir: &str, target: &str) -> String {
-    if target.starts_with('/') {
-        target.trim_start_matches('/').to_string()
-    } else if base_dir.is_empty() {
+    let full = if target.starts_with('/') || base_dir.is_empty() {
         target.to_string()
     } else {
         format!("{}/{}", base_dir.trim_end_matches('/'), target)
+    };
+    let mut parts = Vec::new();
+    for part in full.split('/') {
+        match part {
+            "" | "." => {}
+            ".." => {
+                parts.pop();
+            }
+            _ => parts.push(part),
+        }
     }
+    parts.join("/")
 }
 
 // Worksheet XML parsing
+
+const SPREADSHEET_NS: &str = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+
+struct WorksheetFraming {
+    writers: [Writer<Vec<u8>>; 4],
+    phase: usize, // prolog/root, before sheetData, inside sheetData, after sheetData
+    depth: usize,
+    dimension_depth: Option<usize>,
+    seen_root: bool,
+    seen_decl: bool,
+    closed_root: bool,
+    seen_data: bool,
+    safe: bool,
+}
+
+impl WorksheetFraming {
+    fn new() -> Self {
+        Self {
+            writers: std::array::from_fn(|_| Writer::new(Vec::new())),
+            phase: 0,
+            depth: 0,
+            dimension_depth: None,
+            seen_root: false,
+            seen_decl: false,
+            closed_root: false,
+            seen_data: false,
+            safe: true,
+        }
+    }
+
+    fn observe(
+        &mut self,
+        event: &Event<'_>,
+        decoder: quick_xml::encoding::Decoder,
+    ) -> RpyxlResult<()> {
+        let mut destination =
+            (self.phase != 2 && self.dimension_depth.is_none()).then_some(self.phase);
+        match event {
+            Event::Decl(decl) => {
+                self.safe &= !self.seen_root
+                    && !self.seen_decl
+                    && self.writers[0].get_ref().is_empty()
+                    && decl.version().is_ok()
+                    && utf8_declaration(decl);
+                self.seen_decl = true;
+            }
+            Event::Start(e) | Event::Empty(e) => {
+                let empty = matches!(event, Event::Empty(_));
+                self.safe &= decoder.decode(e.as_ref()).is_ok();
+                let mut default_ns = None;
+                for attr in e.attributes() {
+                    match attr {
+                        Ok(attr) => match attr.decode_and_unescape_value(decoder) {
+                            Ok(value) if attr.key.as_ref() == b"xmlns" => default_ns = Some(value),
+                            Ok(_) => {}
+                            Err(_) => self.safe = false,
+                        },
+                        Err(_) => self.safe = false,
+                    }
+                }
+                if self.depth == 0 {
+                    self.safe &= !self.seen_root
+                        && !empty
+                        && e.name().as_ref() == b"worksheet"
+                        && default_ns.as_deref() == Some(SPREADSHEET_NS);
+                    self.seen_root = true;
+                    self.closed_root = empty;
+                    destination = Some(0);
+                    self.phase = 1;
+                } else if self.depth == 1 && e.local_name().as_ref() == b"dimension" {
+                    destination = None;
+                    if !empty {
+                        self.dimension_depth = Some(self.depth + 1);
+                    }
+                } else if self.depth == 1 && e.local_name().as_ref() == b"sheetData" {
+                    self.safe &= !self.seen_data
+                        && e.name().as_ref() == b"sheetData"
+                        && default_ns.as_deref().is_none_or(|ns| ns == SPREADSHEET_NS);
+                    self.seen_data = true;
+                    // Expand <sheetData/> so regenerated cells can be inserted inside it.
+                    self.writers[2]
+                        .write_event(Event::Start(e.borrow()))
+                        .map_err(|err| {
+                            RpyxlError::IoError(format!("Cannot capture worksheet XML: {err}"))
+                        })?;
+                    self.phase = if empty { 3 } else { 2 };
+                    destination = None;
+                }
+                if !empty {
+                    self.depth += 1;
+                }
+            }
+            Event::End(e) => {
+                if self.depth == 0 {
+                    self.safe = false;
+                } else {
+                    if self.dimension_depth == Some(self.depth) {
+                        self.dimension_depth = None;
+                        destination = None;
+                    } else if self.phase == 2
+                        && self.depth == 2
+                        && e.local_name().as_ref() == b"sheetData"
+                    {
+                        self.phase = 3;
+                        destination = None;
+                    }
+                    self.depth -= 1;
+                    if self.depth == 0 {
+                        self.closed_root = true;
+                    }
+                }
+            }
+            Event::Text(e) => match e.unescape() {
+                Ok(text) if self.depth == 0 && !text.trim().is_empty() => self.safe = false,
+                Ok(_) => {}
+                Err(_) => self.safe = false,
+            },
+            Event::DocType(_) => self.safe = false,
+            Event::CData(e) => self.safe &= self.depth != 0 && decoder.decode(e.as_ref()).is_ok(),
+            Event::Comment(e) => {
+                self.safe &= decoder.decode(e.as_ref()).is_ok()
+                    && !e.as_ref().windows(2).any(|pair| pair == b"--")
+                    && !e.as_ref().ends_with(b"-");
+            }
+            Event::Eof => destination = None,
+            _ => {}
+        }
+        if let Some(index) = destination {
+            self.writers[index]
+                .write_event(event.borrow())
+                .map_err(|err| {
+                    RpyxlError::IoError(format!("Cannot capture worksheet XML: {err}"))
+                })?;
+        }
+        Ok(())
+    }
+
+    fn finish(self) -> Option<WorksheetTemplate> {
+        if !self.safe || !self.closed_root || self.depth != 0 || !self.seen_data || self.phase != 3
+        {
+            return None;
+        }
+        let [root, before, data, after] = self.writers;
+        Some(WorksheetTemplate {
+            root_start: String::from_utf8(root.into_inner()).ok()?,
+            before_data: String::from_utf8(before.into_inner()).ok()?,
+            data_start: String::from_utf8(data.into_inner()).ok()?,
+            after_data: String::from_utf8(after.into_inner()).ok()?,
+        })
+    }
+}
+
+fn attach_cell_style(cell: &mut Cell, styles: &Styles, index: usize, explicit: bool) {
+    cell.rich_style = styles.rich_style(index);
+    cell.source_xf_explicit = explicit;
+    cell.source_xf_id = u32::try_from(index)
+        .ok()
+        .and_then(|index| index.checked_add(1))
+        .and_then(NonZeroU32::new);
+    if let Some(code) = styles
+        .number_format(index)
+        .filter(|code| !code.eq_ignore_ascii_case("General"))
+    {
+        cell.number_format = Some(code.to_owned());
+    }
+}
+
+fn clear_merged_values(ws: &mut Worksheet, ranges: &[(u32, u32, u32, u32)]) {
+    for &(min_row, min_col, max_row, max_col) in ranges {
+        if min_row > max_row || min_col > max_col {
+            continue;
+        }
+        let stored: Vec<_> = ws
+            .cells()
+            .range((min_row, 0)..=(max_row, u32::MAX))
+            .filter_map(|(&(row, col), _)| {
+                (col >= min_col && col <= max_col && (row, col) != (min_row, min_col))
+                    .then_some((row, col))
+            })
+            .collect();
+        for (row, col) in stored {
+            if let Some(cell) = ws.get_cell_mut(row, col) {
+                cell.value = CellValue::Empty;
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WorksheetElement {
+    Worksheet,
+    SheetData,
+    Row,
+    Cell,
+    Value,
+    Formula,
+    InlineString,
+    InlineRun,
+    InlineText,
+    MergeCells,
+    MergeCell,
+    Other,
+}
+
+impl WorksheetElement {
+    fn at_path(name: &[u8], spreadsheet: bool, ancestors: &[Self]) -> Self {
+        if !spreadsheet {
+            return Self::Other;
+        }
+        match (ancestors.last(), name) {
+            (None, b"worksheet") => Self::Worksheet,
+            (Some(Self::Worksheet), b"sheetData") => Self::SheetData,
+            (Some(Self::Worksheet), b"mergeCells") => Self::MergeCells,
+            (Some(Self::MergeCells), b"mergeCell") => Self::MergeCell,
+            (Some(Self::SheetData), b"row") => Self::Row,
+            (Some(Self::Row), b"c") => Self::Cell,
+            (Some(Self::Cell), b"v") => Self::Value,
+            (Some(Self::Cell), b"f") => Self::Formula,
+            (Some(Self::Cell), b"is") => Self::InlineString,
+            (Some(Self::InlineString), b"r") => Self::InlineRun,
+            (Some(Self::InlineString | Self::InlineRun), b"t") => Self::InlineText,
+            _ => Self::Other,
+        }
+    }
+}
 
 pub fn parse_worksheet_into<R: Read>(
     reader: R,
@@ -507,92 +766,135 @@ pub fn parse_worksheet_into<R: Read>(
     styles: &Styles,
     data_only: bool,
 ) -> RpyxlResult<()> {
-    let mut xml_reader = Reader::from_reader(BufReader::new(reader));
+    let mut xml_reader = NsReader::from_reader(BufReader::new(reader));
     xml_reader.config_mut().trim_text(false);
 
     let mut buf = Vec::new();
-
+    let mut ancestors = Vec::new();
+    let mut legacy_namespace = false;
     let mut current_coord = String::new();
     let mut current_type = String::new();
     let mut current_style = 0usize;
-
-    let mut in_v = false;
-    let mut in_f = false;
-    let mut in_is_t = false;
-
+    let mut current_style_explicit = false;
     let mut formula_text = String::new();
     let mut val_text = String::new();
+    let mut framing = WorksheetFraming::new();
+    let mut merged_ranges = Vec::new();
+    ws.xml_template = None;
 
     loop {
-        match xml_reader.read_event_into(&mut buf) {
-            Ok(Event::Start(ref e)) => match e.local_name().as_ref() {
-                b"c" => {
-                    current_coord.clear();
-                    current_type.clear();
-                    current_style = 0;
-                    formula_text.clear();
-                    val_text.clear();
-
-                    for attr in e.attributes().flatten() {
-                        let k = attr.key.local_name();
-                        if k.as_ref() == b"r" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_coord = v.to_string();
+        let (namespace, event) = xml_reader
+            .read_resolved_event_into(&mut buf)
+            .map_err(|e| RpyxlError::IoError(format!("Error parsing worksheet XML: {e:?}")))?;
+        // Consume the namespace borrow before borrowing the reader's decoder.
+        let spreadsheet = match namespace {
+            ResolveResult::Bound(ns) => ns.as_ref() == SPREADSHEET_NS.as_bytes(),
+            ResolveResult::Unbound => {
+                if ancestors.is_empty() && matches!(event, Event::Start(_) | Event::Empty(_)) {
+                    legacy_namespace = true;
+                }
+                legacy_namespace
+            }
+            ResolveResult::Unknown(_) => false,
+        };
+        let decoder = xml_reader.decoder();
+        framing.observe(&event, decoder)?;
+        match event {
+            Event::Start(ref e) | Event::Empty(ref e) => {
+                let empty = matches!(event, Event::Empty(_));
+                let element =
+                    WorksheetElement::at_path(e.local_name().as_ref(), spreadsheet, &ancestors);
+                if ancestors.contains(&WorksheetElement::SheetData) {
+                    ws.unsupported_cell_content |= matches!(
+                        element,
+                        WorksheetElement::Other | WorksheetElement::InlineRun
+                    );
+                    for attr in e.attributes() {
+                        let supported = attr.is_ok_and(|attr| match element {
+                            WorksheetElement::Cell => {
+                                matches!(attr.key.as_ref(), b"r" | b"s" | b"t")
                             }
-                        } else if k.as_ref() == b"t" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_type = v.to_string();
+                            WorksheetElement::InlineText => attr.key.as_ref() == b"xml:space",
+                            WorksheetElement::Row => true,
+                            _ => false,
+                        });
+                        ws.unsupported_cell_content |= !supported;
+                    }
+                }
+                match element {
+                    WorksheetElement::Cell => {
+                        current_coord.clear();
+                        current_type.clear();
+                        current_style = 0;
+                        current_style_explicit = false;
+                        formula_text.clear();
+                        val_text.clear();
+                        for attr in e.attributes().flatten() {
+                            match attr.key.as_ref() {
+                                b"r" => {
+                                    if let Ok(v) = std::str::from_utf8(&attr.value) {
+                                        current_coord = v.to_owned();
+                                    }
+                                }
+                                b"t" => {
+                                    if let Ok(v) = std::str::from_utf8(&attr.value) {
+                                        current_type = v.to_owned();
+                                    }
+                                }
+                                b"s" => {
+                                    current_style_explicit = true;
+                                    current_style = std::str::from_utf8(&attr.value)
+                                        .ok()
+                                        .and_then(|v| v.parse().ok())
+                                        .unwrap_or(0);
+                                }
+                                _ => {}
                             }
-                        } else if k.as_ref() == b"s" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_style = v.parse().unwrap_or(0);
+                        }
+                        if empty {
+                            if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
+                                let cell = ws.set_cell_value(row, col, CellValue::Empty)?;
+                                attach_cell_style(
+                                    cell,
+                                    styles,
+                                    current_style,
+                                    current_style_explicit,
+                                );
+                            }
+                            current_coord.clear();
+                        }
+                    }
+                    WorksheetElement::MergeCell => {
+                        for attr in e.attributes().flatten() {
+                            if attr.key.as_ref() == b"ref" {
+                                if let Ok(value) = attr.decode_and_unescape_value(decoder) {
+                                    if let Ok(range) = range_boundaries(&value) {
+                                        merged_ranges.push(range);
+                                    }
+                                }
                             }
                         }
                     }
+                    _ => {}
                 }
-                b"v" => in_v = true,
-                b"f" => in_f = true,
-                b"t" => in_is_t = true,
+                if !empty {
+                    ancestors.push(element);
+                }
+            }
+            Event::Text(ref e) => match ancestors.last() {
+                Some(WorksheetElement::Value | WorksheetElement::InlineText) => {
+                    val_text.push_str(&decode_xml_text(e, decoder)?);
+                }
+                Some(WorksheetElement::Formula) => {
+                    formula_text.push_str(&decode_xml_text(e, decoder)?);
+                }
+                _ if ancestors.contains(&WorksheetElement::SheetData) => {
+                    ws.unsupported_cell_content |= !decode_xml_text(e, decoder)?.trim().is_empty();
+                }
                 _ => {}
             },
-            Ok(Event::Empty(ref e)) if e.local_name().as_ref() == b"c" => {
-                let mut coord = None;
-                let mut style = 0;
-                for attr in e.attributes().flatten() {
-                    match attr.key.local_name().as_ref() {
-                        b"r" => coord = std::str::from_utf8(&attr.value).ok().map(str::to_owned),
-                        b"s" => {
-                            style = std::str::from_utf8(&attr.value)
-                                .ok()
-                                .and_then(|v| v.parse::<usize>().ok())
-                                .unwrap_or(0)
-                        }
-                        _ => {}
-                    }
-                }
-                if let Some((row, col)) = coord.as_deref().and_then(|c| coordinate_to_tuple(c).ok())
-                {
-                    let cell = ws.set_cell_value(row, col, CellValue::Empty)?;
-                    cell.number_format = styles.number_format(style).map(str::to_owned);
-                }
-            }
-            Ok(Event::Text(ref e)) => {
-                if in_v {
-                    let txt = decode_xml_text(e, xml_reader.decoder())?;
-                    val_text.push_str(&txt);
-                } else if in_f {
-                    let txt = decode_xml_text(e, xml_reader.decoder())?;
-                    formula_text.push_str(&txt);
-                } else if in_is_t {
-                    let txt = decode_xml_text(e, xml_reader.decoder())?;
-                    val_text.push_str(&txt);
-                }
-            }
-            Ok(Event::End(ref e)) => match e.local_name().as_ref() {
-                b"v" => in_v = false,
-                b"f" => in_f = false,
-                b"t" => in_is_t = false,
-                b"c" if !current_coord.is_empty() => {
+            Event::End(_) => {
+                if ancestors.pop() == Some(WorksheetElement::Cell) {
                     if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
                         let cell_value = resolve_cell_value(
                             &current_type,
@@ -603,35 +905,26 @@ pub fn parse_worksheet_into<R: Read>(
                             styles,
                             data_only,
                         );
-                        ws.set_cell_value(row, col, cell_value)?;
-                        if let Some(cell) = ws.get_cell_mut(row, col) {
-                            let temporal = matches!(
-                                cell.value.resolve_value(true),
-                                Some(CellValue::Date(_) | CellValue::DateTime(_))
-                            );
-                            if let Some(code) = styles
-                                .number_format(current_style)
-                                .filter(|code| !temporal || !code.eq_ignore_ascii_case("General"))
-                            {
-                                cell.number_format = Some(code.to_owned());
-                            }
-                        }
+                        let cell = ws.set_cell_value(row, col, cell_value)?;
+                        attach_cell_style(cell, styles, current_style, current_style_explicit);
                     }
+                    current_coord.clear();
                 }
-                _ => {}
-            },
-            Ok(Event::Eof) => break,
-            Err(e) => {
-                return Err(RpyxlError::IoError(format!(
-                    "Error parsing worksheet XML: {:?}",
-                    e
-                )));
             }
+            Event::Comment(_) | Event::PI(_) | Event::CData(_)
+                if ancestors.contains(&WorksheetElement::SheetData) =>
+            {
+                ws.unsupported_cell_content = true;
+            }
+            Event::Eof => break,
             _ => {}
         }
         buf.clear();
     }
 
+    clear_merged_values(ws, &merged_ranges);
+    ws.merged_ranges = merged_ranges;
+    ws.xml_template = framing.finish();
     Ok(())
 }
 

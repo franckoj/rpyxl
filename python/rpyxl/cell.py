@@ -1,4 +1,5 @@
 """Lightweight cell views. No Python cell grid is retained."""
+
 from copy import deepcopy
 from datetime import date, datetime, time
 
@@ -8,7 +9,7 @@ from ._models import CellMetadata, Hyperlink
 
 
 class Cell:
-    __slots__ = ('parent', '_native')
+    __slots__ = ("_native", "parent")
 
     def __init__(self, parent, native):
         self.parent = parent
@@ -25,7 +26,7 @@ class Cell:
     def value(self, value):
         self.parent._check_writable()
         if self.parent._is_merged(self.column, self.row):
-            raise AttributeError('MergedCell value is read-only')
+            raise AttributeError("MergedCell value is read-only")
         self._native.value = value
 
     @property
@@ -51,8 +52,11 @@ class Cell:
         _ = sheet._metadata
         if sheet._number_formats is None:
             from ._compat import read_number_formats
-            sheet._number_formats = read_number_formats(sheet.parent._source, sheet.title)
-        return sheet._number_formats.get(self.coordinate, 'General')
+
+            sheet._number_formats = read_number_formats(
+                sheet.parent._source, sheet.title
+            )
+        return sheet._number_formats.get(self.coordinate, "General")
 
     @number_format.setter
     def number_format(self, value):
@@ -61,15 +65,15 @@ class Cell:
 
     @property
     def is_date(self):
-        if hasattr(self._native, 'is_date'):
+        if hasattr(self._native, "is_date"):
             return self._native.is_date
         return isinstance(self.value, (date, datetime, time))
 
-    font = cell_metadata_property('font')
-    fill = cell_metadata_property('fill')
-    border = cell_metadata_property('border')
-    alignment = cell_metadata_property('alignment')
-    protection = cell_metadata_property('protection')
+    font = cell_metadata_property("font")
+    fill = cell_metadata_property("fill")
+    border = cell_metadata_property("border")
+    alignment = cell_metadata_property("alignment")
+    protection = cell_metadata_property("protection")
 
     @property
     def comment(self):
@@ -78,7 +82,9 @@ class Cell:
     @comment.setter
     def comment(self, value):
         self.parent._check_writable()
-        metadata = self.parent._metadata.cells.setdefault(self.coordinate, CellMetadata())
+        metadata = self.parent._metadata.cells.setdefault(
+            self.coordinate, CellMetadata()
+        )
         metadata.comment = deepcopy(value)
         # Clear old native annotations; the sidecar is authoritative (and can
         # represent authors and richer hyperlink fields that native cannot).
@@ -86,7 +92,9 @@ class Cell:
 
     @property
     def hyperlink(self):
-        return self.parent._metadata.cells.get(self.coordinate, CellMetadata()).hyperlink
+        return self.parent._metadata.cells.get(
+            self.coordinate, CellMetadata()
+        ).hyperlink
 
     @hyperlink.setter
     def hyperlink(self, value):
@@ -97,26 +105,40 @@ class Cell:
             value = deepcopy(value)
             if value is not None:
                 value.ref = self.coordinate
-        self.parent._metadata.cells.setdefault(self.coordinate, CellMetadata()).hyperlink = value
+        self.parent._metadata.cells.setdefault(
+            self.coordinate, CellMetadata()
+        ).hyperlink = value
         self._native.hyperlink = None
         if value is not None and self.value is None:
             self.value = value.target or value.location
 
     @property
     def has_style(self):
+        workbook = self.parent.parent
+        if workbook._native_style_reader is not None:
+            from ._compat import STYLE_DEFAULTS
+
+            return self.number_format != "General" or any(
+                workbook._native_style_reader.get(self, name) != default()
+                for name, default in STYLE_DEFAULTS.items()
+            )
         metadata = self.parent._metadata.cells.get(self.coordinate)
         if metadata is not None:
             from ._compat import STYLE_DEFAULTS
-            if any(getattr(metadata, name) is not None and getattr(metadata, name) != default()
-                   for name, default in STYLE_DEFAULTS.items()):
+
+            if any(
+                getattr(metadata, name) is not None
+                and getattr(metadata, name) != default()
+                for name, default in STYLE_DEFAULTS.items()
+            ):
                 return True
-        return self.number_format != 'General'
+        return self.number_format != "General"
 
     def offset(self, row=0, column=0):
         return self.parent.cell(self.row + row, self.column + column)
 
     def __repr__(self):
-        return '<Cell %r.%s>' % (self.parent.title, self.coordinate)
+        return f"<Cell {self.parent.title!r}.{self.coordinate}>"
 
 
 class MergedCell(Cell):
@@ -126,19 +148,30 @@ class MergedCell(Cell):
 
     @value.setter
     def value(self, value):
-        raise AttributeError('MergedCell value is read-only')
+        raise AttributeError("MergedCell value is read-only")
 
 
-TYPE_STRING = 's'
-TYPE_FORMULA = 'f'
-TYPE_NUMERIC = 'n'
-TYPE_BOOL = 'b'
-TYPE_NULL = 'n'
-TYPE_INLINE = 'inlineStr'
-TYPE_ERROR = 'e'
-TYPE_FORMULA_CACHE_STRING = 'str'
-TYPE_DATE = 'd'
+TYPE_STRING = "s"
+TYPE_FORMULA = "f"
+TYPE_NUMERIC = "n"
+TYPE_BOOL = "b"
+TYPE_NULL = "n"
+TYPE_INLINE = "inlineStr"
+TYPE_ERROR = "e"
+TYPE_FORMULA_CACHE_STRING = "str"
+TYPE_DATE = "d"
 
-__all__ = ['Cell', 'MergedCell', 'NativeCell', 'TYPE_STRING', 'TYPE_FORMULA',
-           'TYPE_NUMERIC', 'TYPE_BOOL', 'TYPE_NULL', 'TYPE_INLINE', 'TYPE_ERROR',
-           'TYPE_FORMULA_CACHE_STRING', 'TYPE_DATE']
+__all__ = [
+    "TYPE_BOOL",
+    "TYPE_DATE",
+    "TYPE_ERROR",
+    "TYPE_FORMULA",
+    "TYPE_FORMULA_CACHE_STRING",
+    "TYPE_INLINE",
+    "TYPE_NULL",
+    "TYPE_NUMERIC",
+    "TYPE_STRING",
+    "Cell",
+    "MergedCell",
+    "NativeCell",
+]

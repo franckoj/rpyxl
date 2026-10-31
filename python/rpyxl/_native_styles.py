@@ -116,7 +116,7 @@ def compile_style_records(metadata_book):
     for title, sheet in metadata_book.sheets.items():
         for coordinate, cell in sheet.cells.items():
             values = tuple(getattr(cell, name) for name in _STYLE_FIELDS)
-            if all(value is None for value in values):
+            if all(value is None for value in values) and not cell.style_dirty:
                 continue
             key = tuple(_snapshot(value) for value in values)
             if key not in indices:
@@ -172,9 +172,12 @@ def requires_metadata_overlay(metadata_book):
                     if _has_extra_attributes(cell):
                         return True
                     for cell_field in fields(cell):
-                        if cell_field.name not in _STYLE_FIELDS and _snapshot(
-                            getattr(cell, cell_field.name)
-                        ) != _snapshot(getattr(default_cell, cell_field.name)):
+                        if cell_field.name not in (
+                            *_STYLE_FIELDS,
+                            "style_dirty",
+                        ) and _snapshot(getattr(cell, cell_field.name)) != _snapshot(
+                            getattr(default_cell, cell_field.name)
+                        ):
                             return True
             elif name in ("column_dimensions", "row_dimensions"):
                 default = getattr(default_sheet, name).factory()

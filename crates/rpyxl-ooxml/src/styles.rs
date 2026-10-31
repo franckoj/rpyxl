@@ -1,16 +1,25 @@
 use std::collections::HashMap;
 use std::io::Read;
+use std::sync::Arc;
 
 use chrono::{Duration, NaiveDate, NaiveDateTime, NaiveTime};
-use quick_xml::events::Event;
-use quick_xml::reader::Reader;
+use quick_xml::events::{BytesDecl, BytesStart, Event};
+use quick_xml::name::ResolveResult;
+use quick_xml::{NsReader, Writer};
 
+use rpyxl_core::cell::RichStyle;
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
+
+const SPREADSHEET_NS: &[u8] = b"http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+// RichStyle owns its component Strings, so a small table can expand once per XF.
+const MAX_RESOLVED_STYLE_BYTES: usize = 64 * 1024 * 1024;
 
 #[derive(Debug, Default, Clone)]
 pub struct Styles {
     custom_num_fmts: HashMap<u32, String>,
     cell_xfs: Vec<u32>, // style index -> numFmtId
+    rich_styles: Vec<Arc<RichStyle>>,
+    source_xml: Option<String>,
     pub date_1904: bool,
 }
 
@@ -19,71 +28,262 @@ impl Styles {
         Self::default()
     }
 
-    pub fn from_reader<R: Read>(reader: R) -> RpyxlResult<Self> {
-        let mut xml_reader = Reader::from_reader(std::io::BufReader::new(reader));
-        xml_reader.config_mut().trim_text(true);
-        let mut buf = Vec::new();
+    pub fn from_reader<R: Read>(mut reader: R) -> RpyxlResult<Self> {
+        let mut source = Vec::new();
+        reader
+            .read_to_end(&mut source)
+            .map_err(|err| style_error(err.to_string()))?;
+        let mut xml_reader = NsReader::from_reader(source.as_slice());
+        xml_reader.config_mut().trim_text(false);
         let mut styles = Self::default();
-        let mut in_cell_xfs = false;
+        let mut fonts = Vec::new();
+        let mut fills = Vec::new();
+        let mut borders = Vec::new();
+        let mut base_xfs = Vec::new();
+        let mut cell_xfs = Vec::new();
+        let mut path: Vec<Vec<u8>> = Vec::new();
+        let mut namespaces = Vec::new();
+        let mut namespace_counts = Vec::new();
+        let mut capture: Option<(Vec<u8>, usize, Writer<Vec<u8>>)> = None;
+        let mut utf8 = true;
+        let mut roots = 0;
+        let mut legacy_namespace = false;
 
         loop {
-            match xml_reader.read_event_into(&mut buf) {
-                Ok(Event::Start(ref e)) | Ok(Event::Empty(ref e)) => {
-                    match e.local_name().as_ref() {
-                        b"cellXfs" => in_cell_xfs = true,
-                        b"numFmt" => {
-                            let mut id = None;
-                            let mut code = None;
-                            for attr in e.attributes().flatten() {
-                                let value = attr
-                                    .decode_and_unescape_value(xml_reader.decoder())
-                                    .map_err(|err| {
-                                        RpyxlError::IoError(format!("Invalid number format: {err}"))
-                                    })?;
-                                match attr.key.local_name().as_ref() {
-                                    b"numFmtId" => id = value.parse::<u32>().ok(),
-                                    b"formatCode" => code = Some(value.into_owned()),
-                                    _ => {}
-                                }
-                            }
-                            if let (Some(id), Some(code)) = (id, code) {
-                                styles.custom_num_fmts.insert(id, code);
+            let (namespace, event) = xml_reader
+                .read_resolved_event()
+                .map_err(|err| style_error(err.to_string()))?;
+            let unbound = matches!(&namespace, ResolveResult::Unbound);
+            let spreadsheet = matches!(namespace,
+                ResolveResult::Bound(namespace) if namespace.as_ref() == SPREADSHEET_NS);
+            if matches!(event, Event::DocType(_)) {
+                return Err(RpyxlError::XmlSecurityViolation(
+                    "DTD / DOCTYPE declaration is forbidden in styles.xml".to_string(),
+                ));
+            }
+            if let Some((_, _, writer)) = capture.as_mut() {
+                writer
+                    .write_event(event.borrow())
+                    .map_err(|err| style_error(err.to_string()))?;
+            }
+            match &event {
+                Event::Decl(decl) => utf8 &= utf8_declaration(decl),
+                Event::Start(e) | Event::Empty(e) => {
+                    let empty = matches!(event, Event::Empty(_));
+                    if path.is_empty() {
+                        roots += 1;
+                        // A namespace-less root selects legacy mode without accepting mixed namespaces.
+                        legacy_namespace = unbound && e.name().as_ref() == b"styleSheet";
+                    }
+                    let accepted_namespace = if legacy_namespace {
+                        unbound
+                    } else {
+                        spreadsheet
+                    };
+                    // Foreign elements cannot match any ancestry segment in either mode.
+                    let name = if accepted_namespace {
+                        e.local_name().as_ref().to_vec()
+                    } else {
+                        Vec::new()
+                    };
+                    let namespace_count = namespaces.len();
+                    for attr in e.attributes() {
+                        let attr = attr.map_err(|err| style_error(err.to_string()))?;
+                        if attr.key.as_ref() == b"xmlns" || attr.key.as_ref().starts_with(b"xmlns:")
+                        {
+                            namespaces.push((attr.key.as_ref().to_vec(), attr.value.into_owned()));
+                        }
+                    }
+                    let parent = path.last().map(Vec::as_slice).unwrap_or_default();
+                    let in_table = path.len() == 2 && path[0] == b"styleSheet";
+                    let in_xf = path.len() == 3
+                        && path[0] == b"styleSheet"
+                        && matches!(path[1].as_slice(), b"cellXfs" | b"cellStyleXfs")
+                        && parent == b"xf";
+                    if in_table && name == b"numFmt" && parent == b"numFmts" {
+                        let mut id = None;
+                        let mut code = None;
+                        for attr in e.attributes() {
+                            let attr = attr.map_err(|err| style_error(err.to_string()))?;
+                            let value = attr
+                                .decode_and_unescape_value(xml_reader.decoder())
+                                .map_err(|err| style_error(err.to_string()))?;
+                            match attr.key.as_ref() {
+                                b"numFmtId" => id = value.parse::<u32>().ok(),
+                                b"formatCode" => code = Some(value.into_owned()),
+                                _ => {}
                             }
                         }
-                        b"xf" if in_cell_xfs => {
-                            let mut id = 0;
-                            for attr in e.attributes().flatten() {
-                                if attr.key.local_name().as_ref() == b"numFmtId" {
-                                    id = std::str::from_utf8(&attr.value)
-                                        .ok()
-                                        .and_then(|v| v.parse().ok())
-                                        .unwrap_or(0);
-                                }
-                            }
-                            styles.cell_xfs.push(id);
+                        if let (Some(id), Some(code)) = (id, code) {
+                            styles.custom_num_fmts.insert(id, code);
                         }
-                        _ => {}
+                    }
+                    if in_table && name == b"xf" && matches!(parent, b"cellXfs" | b"cellStyleXfs") {
+                        let xf = StyleXf::parse(e)?;
+                        if parent == b"cellXfs" {
+                            cell_xfs.push(xf);
+                        } else {
+                            base_xfs.push(xf);
+                        }
+                    }
+                    let component = (in_table
+                        && matches!(
+                            (parent, name.as_slice()),
+                            (b"fonts", b"font") | (b"fills", b"fill") | (b"borders", b"border")
+                        ))
+                        || (in_xf && matches!(name.as_slice(), b"alignment" | b"protection"));
+                    if capture.is_none() && component {
+                        let mut start = e.to_owned();
+                        // Move inherited bindings onto the fragment root, retaining local overrides.
+                        for (key, value) in namespaces.iter().rev() {
+                            if !start
+                                .attributes()
+                                .flatten()
+                                .any(|attr| attr.key.as_ref() == key)
+                            {
+                                start.push_attribute((key.as_slice(), value.as_slice()));
+                            }
+                        }
+                        let mut writer = Writer::new(Vec::new());
+                        writer
+                            .write_event(if empty {
+                                Event::Empty(start)
+                            } else {
+                                Event::Start(start)
+                            })
+                            .map_err(|err| style_error(err.to_string()))?;
+                        capture = Some((name.clone(), path.len(), writer));
+                    }
+                    if !empty {
+                        namespace_counts.push(namespace_count);
+                        path.push(name);
+                    } else {
+                        namespaces.truncate(namespace_count);
                     }
                 }
-                Ok(Event::End(ref e)) if e.local_name().as_ref() == b"cellXfs" => {
-                    in_cell_xfs = false;
+                Event::End(_) => {
+                    path.pop();
+                    if let Some(count) = namespace_counts.pop() {
+                        namespaces.truncate(count);
+                    }
                 }
-                Ok(Event::DocType(_)) => {
-                    return Err(RpyxlError::XmlSecurityViolation(
-                        "DTD / DOCTYPE declaration is forbidden in styles.xml".to_string(),
-                    ))
-                }
-                Ok(Event::Eof) => break,
-                Err(err) => {
-                    return Err(RpyxlError::IoError(format!(
-                        "Error parsing styles.xml: {err}"
-                    )))
-                }
+                Event::Eof => break,
                 _ => {}
             }
-            buf.clear();
+            let complete = capture
+                .as_ref()
+                .is_some_and(|(_, depth, _)| path.len() == *depth);
+            if complete {
+                let (kind, _, writer) = capture.take().unwrap();
+                let bytes = writer.into_inner();
+                // quick-xml reads legacy encodings too; fragments must always be UTF-8 Strings.
+                let fragment = xml_reader
+                    .decoder()
+                    .decode(&bytes)
+                    .map_err(|err| style_error(err.to_string()))?
+                    .into_owned();
+                match kind.as_slice() {
+                    b"font" => fonts.push(fragment),
+                    b"fill" => fills.push(fragment),
+                    b"border" => borders.push(fragment),
+                    _ => {
+                        let group = path.iter().rev().nth(1).map(Vec::as_slice);
+                        let xf = if group == Some(b"cellXfs") {
+                            cell_xfs.last_mut()
+                        } else {
+                            base_xfs.last_mut()
+                        };
+                        if let Some(xf) = xf {
+                            if kind == b"alignment" {
+                                xf.alignment = Some(fragment);
+                            } else {
+                                xf.protection = Some(fragment);
+                            }
+                        }
+                    }
+                }
+            }
         }
+        if !path.is_empty() || roots != 1 {
+            return Err(style_error(
+                "Incomplete or multiple styles.xml roots".into(),
+            ));
+        }
+        let mut remaining_style_bytes = MAX_RESOLVED_STYLE_BYTES;
+        for xf in cell_xfs {
+            let base = xf.base.and_then(|id| base_xfs.get(id as usize));
+            let id = |own, inherited, apply| effective(own, inherited, apply).unwrap_or(0);
+            styles.cell_xfs.push(id(
+                xf.num_fmt,
+                base.and_then(|b| b.num_fmt),
+                xf.apply_num_fmt,
+            ));
+            let font = fonts.get(id(xf.font, base.and_then(|b| b.font), xf.apply_font) as usize);
+            let fill = fills.get(id(xf.fill, base.and_then(|b| b.fill), xf.apply_fill) as usize);
+            let border =
+                borders.get(id(xf.border, base.and_then(|b| b.border), xf.apply_border) as usize);
+            let alignment = effective(
+                xf.alignment.as_ref(),
+                base.and_then(|b| b.alignment.as_ref()),
+                xf.apply_alignment,
+            );
+            let protection = effective(
+                xf.protection.as_ref(),
+                base.and_then(|b| b.protection.as_ref()),
+                xf.apply_protection,
+            );
+            // Check the aggregate before cloning any selected component, including inherited XML.
+            // Include the RichStyle, Arc counters and per-XF index/handle storage as well as text.
+            for bytes in std::iter::once(
+                std::mem::size_of::<RichStyle>()
+                    + 2 * std::mem::size_of::<usize>()
+                    + std::mem::size_of::<Arc<RichStyle>>()
+                    + std::mem::size_of::<u32>(),
+            )
+            .chain(
+                [font, fill, border, alignment, protection]
+                    .into_iter()
+                    .flatten()
+                    .map(String::len),
+            ) {
+                remaining_style_bytes = remaining_style_bytes.checked_sub(bytes).ok_or_else(|| {
+                    RpyxlError::XmlSecurityViolation(format!(
+                        "Resolved styles.xml allocation exceeds {MAX_RESOLVED_STYLE_BYTES} byte budget"
+                    ))
+                })?;
+            }
+            // Keep one identity per original XF, even when its resolved components are equal.
+            styles.rich_styles.push(Arc::new(RichStyle {
+                font: font.cloned(),
+                fill: fill.cloned(),
+                border: border.cloned(),
+                alignment: alignment.cloned(),
+                protection: protection.cloned(),
+            }));
+        }
+        styles.source_xml = Some(if utf8 {
+            String::from_utf8(source).map_err(|err| style_error(err.to_string()))?
+        } else {
+            let decoded = xml_reader
+                .decoder()
+                .decode(&source)
+                .map_err(|err| style_error(err.to_string()))?;
+            normalize_source_xml(&decoded)?
+        });
         Ok(styles)
+    }
+
+    pub fn rich_style(&self, index: usize) -> Option<Arc<RichStyle>> {
+        self.rich_styles.get(index).cloned()
+    }
+
+    pub fn rich_styles(&self) -> &[Arc<RichStyle>] {
+        &self.rich_styles
+    }
+
+    /// Retained stylesheet for generated saves; legacy input is normalized to UTF-8.
+    pub fn source_xml(&self) -> Option<&str> {
+        self.source_xml.as_deref()
     }
 
     pub fn number_format(&self, style_idx: usize) -> Option<&str> {
@@ -125,6 +325,111 @@ impl Styles {
 
     pub fn excel_to_date_string(serial: f64) -> Option<String> {
         excel_to_date_string(serial, false)
+    }
+}
+
+pub(crate) fn utf8_declaration(decl: &BytesDecl<'_>) -> bool {
+    match decl.encoding() {
+        None => true,
+        Some(Ok(encoding)) => encoding.eq_ignore_ascii_case(b"UTF-8"),
+        Some(Err(_)) => false,
+    }
+}
+
+// Retained source is used by generated saves, not as a raw-byte worksheet template.
+// Rewrite declarations too: UTF-8 bytes with a legacy declaration would be decoded twice.
+fn normalize_source_xml(source: &str) -> RpyxlResult<String> {
+    let mut reader = quick_xml::Reader::from_str(source);
+    let mut writer = Writer::new(Vec::with_capacity(source.len()));
+    loop {
+        let event = reader
+            .read_event()
+            .map_err(|err| style_error(err.to_string()))?;
+        match event {
+            Event::Eof => break,
+            Event::Decl(decl) => {
+                let version = decl.version().map_err(|err| style_error(err.to_string()))?;
+                let version =
+                    std::str::from_utf8(&version).map_err(|err| style_error(err.to_string()))?;
+                let standalone = decl
+                    .standalone()
+                    .transpose()
+                    .map_err(|err| style_error(err.to_string()))?;
+                let standalone = standalone
+                    .as_deref()
+                    .map(std::str::from_utf8)
+                    .transpose()
+                    .map_err(|err| style_error(err.to_string()))?;
+                writer.write_event(Event::Decl(BytesDecl::new(
+                    version,
+                    Some("UTF-8"),
+                    standalone,
+                )))
+            }
+            event => writer.write_event(event),
+        }
+        .map_err(|err| style_error(err.to_string()))?;
+    }
+    String::from_utf8(writer.into_inner()).map_err(|err| style_error(err.to_string()))
+}
+
+fn style_error(message: String) -> RpyxlError {
+    RpyxlError::IoError(format!("Error parsing styles.xml: {message}"))
+}
+
+fn effective<T>(own: Option<T>, inherited: Option<T>, apply: Option<bool>) -> Option<T> {
+    if apply == Some(false) && inherited.is_some() {
+        inherited
+    } else {
+        own.or(inherited)
+    }
+}
+
+#[derive(Default)]
+struct StyleXf {
+    base: Option<u32>,
+    num_fmt: Option<u32>,
+    font: Option<u32>,
+    fill: Option<u32>,
+    border: Option<u32>,
+    alignment: Option<String>,
+    protection: Option<String>,
+    apply_num_fmt: Option<bool>,
+    apply_font: Option<bool>,
+    apply_fill: Option<bool>,
+    apply_border: Option<bool>,
+    apply_alignment: Option<bool>,
+    apply_protection: Option<bool>,
+}
+
+impl StyleXf {
+    fn parse(element: &BytesStart<'_>) -> RpyxlResult<Self> {
+        let mut xf = Self::default();
+        for attr in element.attributes() {
+            let attr = attr.map_err(|err| style_error(err.to_string()))?;
+            let value = std::str::from_utf8(&attr.value).unwrap_or_default();
+            let id = value.parse::<u32>().ok();
+            let apply = match value {
+                "1" | "true" => Some(true),
+                "0" | "false" => Some(false),
+                _ => None,
+            };
+            match attr.key.as_ref() {
+                b"xfId" => xf.base = id,
+                b"numFmtId" => xf.num_fmt = id,
+                b"fontId" => xf.font = id,
+                b"fillId" => xf.fill = id,
+                b"borderId" => xf.border = id,
+                b"applyNumberFormat" => xf.apply_num_fmt = apply,
+                b"applyFont" => xf.apply_font = apply,
+                b"applyFill" => xf.apply_fill = apply,
+                b"applyBorder" => xf.apply_border = apply,
+                b"applyAlignment" => xf.apply_alignment = apply,
+                b"applyProtection" => xf.apply_protection = apply,
+                _ => {}
+            }
+        }
+        Ok(xf)
     }
 }
 

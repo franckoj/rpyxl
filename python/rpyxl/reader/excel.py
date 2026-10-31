@@ -1,4 +1,3 @@
-
 import os
 from shutil import copyfileobj
 from tempfile import TemporaryFile
@@ -32,7 +31,9 @@ def load_workbook(
     """
     if kwargs:
         unexpected = next(iter(kwargs))
-        raise TypeError(f"load_workbook() got an unexpected keyword argument {unexpected!r}")
+        raise TypeError(
+            f"load_workbook() got an unexpected keyword argument {unexpected!r}"
+        )
     if keep_vba:
         raise NotImplementedError("VBA preservation is not implemented")
     if rich_text:
@@ -41,8 +42,10 @@ def load_workbook(
     # Native loading snapshots binary streams, including for lazy read-only access.
     # The caller retains ownership; the stream is never closed by rpyxl.
     try:
-        native = _load_workbook(filename, read_only=bool(read_only), data_only=bool(data_only))
-    except (ValueError, IOError, OSError, Exception) as e:
+        native = _load_workbook(
+            filename, read_only=bool(read_only), data_only=bool(data_only)
+        )
+    except (ValueError, OSError, Exception) as e:
         msg = str(e)
         if any(
             marker in msg
@@ -57,21 +60,42 @@ def load_workbook(
             )
         ):
             from ..utils.exceptions import InvalidFileException
+
             raise InvalidFileException(msg) from e
         raise
+
+    # Editable native snapshots are stable even for unsupported templates. Do
+    # not copy them back into Python until a rich feature actually needs them.
+    if not read_only and all(
+        hasattr(native, name)
+        for name in (
+            "_has_original_package",
+            "_can_preserve_package",
+            "_original_package",
+            "_source_style_record",
+            "_update_cell_styles",
+        )
+    ):
+        try:
+            return Workbook(_native=native)
+        except Exception:
+            native.close()
+            raise
 
     # Validate with Rust before opening any metadata archive. Keep our own
     # disk-backed snapshot for deferred metadata access to caller-owned streams;
     # closing or repositioning the caller stream cannot invalidate the wrapper.
     source = (
         os.path.abspath(os.fsdecode(os.fspath(filename)))
-        if isinstance(filename, (str, bytes, os.PathLike)) else filename
+        if isinstance(filename, (str, bytes, os.PathLike))
+        else filename
     )
     owns_source = False
     try:
         if not isinstance(filename, (str, bytes, os.PathLike)):
             position = filename.tell()
-            source = TemporaryFile(mode='w+b')
+            # Ownership transfers to Workbook, which closes this snapshot.
+            source = TemporaryFile(mode="w+b")  # noqa: SIM115
             owns_source = True
             try:
                 filename.seek(0)
@@ -85,5 +109,6 @@ def load_workbook(
         if owns_source:
             source.close()
         raise
+
 
 __all__ = ["load_workbook"]
