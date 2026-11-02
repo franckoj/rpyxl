@@ -1,5 +1,8 @@
 """Coordinate utilities for openpyxl compatibility."""
 
+import re
+
+
 def get_column_letter(col_idx: int) -> str:
     """Convert a 1-based column index to an Excel column letter."""
     if not (1 <= col_idx <= 16384):
@@ -28,11 +31,10 @@ def column_index_from_string(col_str: str) -> int:
 
 def coordinate_to_tuple(coord: str) -> tuple[int, int]:
     """Convert a coordinate string (e.g. 'A1', '$B$10') to (row, col) (1-based)."""
-    clean = coord.strip().replace("$", "")
-    letters = "".join(c for c in clean if c.isalpha())
-    digits = "".join(c for c in clean if c.isdigit())
-    if not letters or not digits or len(letters) + len(digits) != len(clean):
+    match = re.fullmatch(r"\$?([A-Za-z]+)\$?([0-9]+)", coord.strip())
+    if match is None:
         raise ValueError(f"Invalid coordinate format: {coord}")
+    letters, digits = match.groups()
     row = int(digits)
     col = column_index_from_string(letters)
     if not (1 <= row <= 1048576):
