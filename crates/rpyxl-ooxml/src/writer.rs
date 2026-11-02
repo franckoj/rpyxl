@@ -499,6 +499,7 @@ fn validate_plain_workbook(root: &XmlElement) -> RpyxlResult<()> {
         root,
         &[
             "workbookPr",
+            "workbookProtection",
             "bookViews",
             "sheets",
             "definedNames",
@@ -508,6 +509,13 @@ fn validate_plain_workbook(root: &XmlElement) -> RpyxlResult<()> {
     for node in &root.children {
         match node.name.as_str() {
             "workbookPr" => plain_node(node, "workbookPr", &["date1904"])?,
+            "workbookProtection" => {
+                // Openpyxl emits this empty element even for unprotected books.
+                plain_node(node, "workbookProtection", &[])?;
+                if !node.attributes.is_empty() || !node.text.is_empty() {
+                    return Err(template_error("nonempty workbook protection"));
+                }
+            }
             "bookViews" => {
                 plain_node(node, "bookViews", &[])?;
                 plain_children(node, &["workbookView"])?;

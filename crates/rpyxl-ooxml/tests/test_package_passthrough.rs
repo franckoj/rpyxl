@@ -867,7 +867,7 @@ fn native_core_axis_edits_refuse_default_passthrough_without_touching_files() {
 
 fn plain_fixture() -> Vec<u8> {
     let workbook = format!(
-        r#"<workbook xmlns="{NS}"><workbookPr/><bookViews><workbookView visibility="visible" minimized="0" showHorizontalScroll="1" showVerticalScroll="1" showSheetTabs="1" tabRatio="600" firstSheet="0" activeTab="0" autoFilterDateGrouping="1"/></bookViews><sheets><sheet xmlns:r="{REL}" name="Data" sheetId="1" state="visible" r:id="grid"/></sheets><definedNames/><calcPr calcId="124519" fullCalcOnLoad="1"/></workbook>"#
+        r#"<workbook xmlns="{NS}"><workbookPr/><workbookProtection/><bookViews><workbookView visibility="visible" minimized="0" showHorizontalScroll="1" showVerticalScroll="1" showSheetTabs="1" tabRatio="600" firstSheet="0" activeTab="0" autoFilterDateGrouping="1"/></bookViews><sheets><sheet xmlns:r="{REL}" name="Data" sheetId="1" state="visible" r:id="grid"/></sheets><definedNames/><calcPr calcId="124519" fullCalcOnLoad="1"/></workbook>"#
     );
     let worksheet = format!(
         r#"<worksheet xmlns="{NS}"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/><pageSetUpPr/></sheetPr><dimension ref="A1:D8"/><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="15"/><sheetData><row r="1"><c r="A1" s="2" t="n"><v>12.5</v></c><c r="B1" s="1" t="n"><v>7</v></c><c r="C1" s="0" t="n"></c><c r="D1" t="n"><v>4</v></c></row><row r="4"><c r="A4" t="inlineStr"><is><t xml:space="preserve"> =日本語 &amp; café </t></is></c><c r="B4" t="b"><v>1</v></c></row><row r="8"/></sheetData><pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>"#
@@ -906,6 +906,65 @@ fn assert_native_cells_roundtrip(wb: &Workbook, saved: &[u8]) {
             );
         }
     }
+}
+
+#[test]
+fn plain_optin_accepts_only_empty_default_workbook_protection() {
+    let original = plain_fixture();
+    let book = part(&original, BOOK);
+    assert!(book.contains("<workbookPr/><workbookProtection/><bookViews>"));
+    for protection in [
+        "<workbookProtection/>",
+        "<workbookProtection></workbookProtection>",
+        "",
+    ] {
+        let book = book.replace("<workbookProtection/>", protection);
+        let mut wb = load(replace_part(original.clone(), BOOK, &book));
+        assert!(enable_plain_structural_edits(&mut wb).unwrap());
+        apply_plain_edit(&mut wb, 4);
+        let saved = save_bytes(&wb);
+        assert_eq!(part(&saved, BOOK), book);
+        assert_native_cells_roundtrip(&wb, &saved);
+        assert!(enable_plain_structural_edits(&mut load(saved)).unwrap());
+    }
+    for protection in [
+        "<workbookProtection lockStructure=\"1\"/>",
+        "<workbookProtection lockStructure=\"0\"/>",
+        "<workbookProtection lockWindows=\"1\"/>",
+        "<workbookProtection workbookPassword=\"ABCD\"/>",
+        "<workbookProtection unknown=\"1\"/>",
+        "<workbookProtection><extLst/></workbookProtection>",
+        "<workbookProtection><unknown xmlns=\"urn:foreign\"/></workbookProtection>",
+        "<workbookProtection>protected</workbookProtection>",
+        "<workbookProtection> </workbookProtection>",
+        "<workbookProtection xmlns=\"urn:foreign\"/>",
+        "<workbookProtection xmlns:e=\"urn:foreign\" e:lock=\"1\"/>",
+        "<workbookProtection xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"/>",
+        "<workbookProtection/><workbookProtection/>",
+    ] {
+        let mut wb = load(replace_part(
+            original.clone(),
+            BOOK,
+            &book.replace("<workbookProtection/>", protection),
+        ));
+        let snapshot = wb.clone();
+        assert!(
+            !enable_plain_structural_edits(&mut wb).unwrap(),
+            "accepted {protection}"
+        );
+        assert_eq!(wb, snapshot);
+        assert!(wb
+            .sheets()
+            .iter()
+            .all(|sheet| !sheet.structural_passthrough_enabled()));
+    }
+    let misplaced = book
+        .replace("<workbookProtection/>", "")
+        .replace("<sheets>", "<workbookProtection/><sheets>");
+    let mut wb = load(replace_part(original, BOOK, &misplaced));
+    let snapshot = wb.clone();
+    assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+    assert_eq!(wb, snapshot);
 }
 
 #[test]
