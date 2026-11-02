@@ -224,7 +224,7 @@ impl Worksheet {
         if cell
             .number_format
             .as_deref()
-            .map_or(true, |code| code == "General")
+            .is_none_or(|code| code == "General")
         {
             let temporal_format = match &value {
                 CellValue::Date(_) => Some("yyyy-mm-dd"),
