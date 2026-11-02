@@ -280,8 +280,8 @@ fn explicit_xf_zero_survives_for_all_value_kinds_without_changing_inheritance() 
             SHEET
         };
         let cells = attributes(&part(&saved.into_inner(), path), "c");
-        for column in 0..5 {
-            assert_eq!(cells[column].get("s").map(String::as_str), Some("0"));
+        for cell in &cells[..5] {
+            assert_eq!(cell.get("s").map(String::as_str), Some("0"));
         }
         let implicit = cells.iter().find(|cell| cell["r"] == "F1").unwrap();
         assert!(!implicit.contains_key("s"));
