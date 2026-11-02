@@ -1,21 +1,36 @@
 use std::collections::HashMap;
+use std::io::{Cursor, Read};
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
 use pyo3::exceptions::{PyAttributeError, PyIndexError, PyKeyError, PyTypeError, PyValueError};
 use pyo3::prelude::*;
-use pyo3::types::{PyBool, PyDict, PyFloat, PyInt, PyList, PySlice, PyString, PyTuple};
+use pyo3::types::{PyBool, PyBytes, PyDict, PyFloat, PyInt, PyList, PySlice, PyString, PyTuple};
 
-use rpyxl_core::cell::CellValue;
+use rpyxl_core::cell::{CellValue, RichStyle};
 use rpyxl_core::coordinate::{
-    coordinate_to_tuple, get_column_letter, range_boundaries, tuple_to_coordinate,
+    coordinate_to_tuple, get_column_letter, range_boundaries, tuple_to_coordinate, MAX_COLUMN,
+    MAX_ROW,
 };
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
+use rpyxl_core::package::PackageTemplate;
 use rpyxl_core::workbook::Workbook;
+use rpyxl_ooxml::reader::{MAX_TOTAL_UNCOMPRESSED_SIZE, MAX_UNCOMPRESSED_FILE_SIZE};
+use rpyxl_ooxml::writer::{save_workbook_generated, write_workbook_generated};
 use rpyxl_ooxml::{
-    read_single_cell, save_workbook, save_write_only_workbook, SharedStringsTable, SheetInfo,
-    StreamingRowReader, Styles, WriteOnlySheet, XlsxPackage,
+    read_single_cell, save_workbook, save_write_only_workbook, write_workbook,
+    write_write_only_workbook, SharedStringsTable, SheetInfo, StreamingRowReader, Styles,
+    WriteOnlySheet, XlsxPackage,
 };
+
+type RichStyleInput = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
 
 pub fn map_rpyxl_err(err: RpyxlError) -> PyErr {
     match err {
@@ -60,6 +75,237 @@ pub fn map_rpyxl_err(err: RpyxlError) -> PyErr {
     }
 }
 
+trait ReadSeek: std::io::Read + std::io::Seek + Send {}
+impl<T: std::io::Read + std::io::Seek + Send> ReadSeek for T {}
+
+#[derive(Clone)]
+enum WorkbookSource {
+    Path(PathBuf),
+    Bytes(Arc<[u8]>),
+}
+
+impl WorkbookSource {
+    fn open(&self) -> RpyxlResult<Box<dyn ReadSeek>> {
+        match self {
+            Self::Path(path) => std::fs::File::open(path)
+                .map(|file| Box::new(std::io::BufReader::new(file)) as Box<dyn ReadSeek>)
+                .map_err(|e| RpyxlError::IoError(format!("Failed to open file: {}", e))),
+            Self::Bytes(bytes) => Ok(Box::new(Cursor::new(Arc::clone(bytes))) as Box<dyn ReadSeek>),
+        }
+    }
+}
+
+fn filesystem_path(value: &Bound<'_, PyAny>) -> PyResult<Option<PathBuf>> {
+    if value.is_instance_of::<PyString>()
+        || value.is_instance_of::<PyBytes>()
+        || value.hasattr("__fspath__")?
+    {
+        let os = value.py().import_bound("os")?;
+        let path = os.call_method1("fspath", (value,))?;
+        return os.call_method1("fsdecode", (path,))?.extract().map(Some);
+    }
+    Ok(None)
+}
+
+fn workbook_source(value: &Bound<'_, PyAny>) -> PyResult<WorkbookSource> {
+    if let Some(path) = filesystem_path(value)? {
+        let path = value
+            .py()
+            .allow_threads(move || -> std::io::Result<PathBuf> {
+                let path = if path.is_absolute() {
+                    path
+                } else {
+                    std::env::current_dir()?.join(path)
+                };
+                // Preserve Python's errno-specific exceptions for filesystem inputs.
+                std::fs::File::open(&path)?;
+                Ok(path)
+            })?;
+        return Ok(WorkbookSource::Path(path));
+    }
+    for method in ["read", "seek", "tell"] {
+        if !value.hasattr(method)? || !value.getattr(method)?.is_callable() {
+            return Err(PyTypeError::new_err(
+                "Expected a filesystem path or a seekable binary file-like object with read(), seek(), and tell()",
+            ));
+        }
+    }
+    let position = value.call_method0("tell")?;
+    let result = (|| -> PyResult<WorkbookSource> {
+        value.call_method1("seek", (0,))?;
+        let data = value.call_method0("read")?;
+        let bytes = data.downcast::<PyBytes>().map_err(|_| {
+            PyTypeError::new_err(
+                "Workbook input must be opened in binary mode (read() must return bytes)",
+            )
+        })?;
+        Ok(WorkbookSource::Bytes(Arc::from(bytes.as_bytes())))
+    })();
+    // Restore even when seeking, reading, or validating the returned data fails.
+    match value.call_method1("seek", (&position,)) {
+        Ok(_) => result,
+        Err(restore_error) => {
+            if let Err(original_error) = result {
+                restore_error.set_cause(value.py(), Some(original_error));
+            }
+            Err(restore_error)
+        }
+    }
+}
+
+fn check_snapshot_size(size: u64) -> PyResult<()> {
+    if size > MAX_TOTAL_UNCOMPRESSED_SIZE {
+        return Err(PyValueError::new_err(format!(
+            "Compressed workbook size exceeds safety threshold of {} bytes",
+            MAX_TOTAL_UNCOMPRESSED_SIZE
+        )));
+    }
+    Ok(())
+}
+
+fn editable_workbook_snapshot(value: &Bound<'_, PyAny>) -> PyResult<Arc<[u8]>> {
+    if let Some(path) = filesystem_path(value)? {
+        return value.py().allow_threads(move || {
+            let file = std::fs::File::open(path)?;
+            check_snapshot_size(file.metadata()?.len())?;
+            // Limit every append, including if the file grows after the metadata check.
+            let mut reader = file.take(MAX_TOTAL_UNCOMPRESSED_SIZE + 1);
+            let mut bytes = Vec::new();
+            let mut chunk = [0; 64 * 1024];
+            loop {
+                let count = reader.read(&mut chunk)?;
+                check_snapshot_size(bytes.len() as u64 + count as u64)?;
+                if count == 0 {
+                    break;
+                }
+                bytes.extend_from_slice(&chunk[..count]);
+            }
+            Ok(bytes.into())
+        });
+    }
+    for method in ["read", "seek", "tell"] {
+        if !value.hasattr(method)? || !value.getattr(method)?.is_callable() {
+            return Err(PyTypeError::new_err(
+                "Expected a filesystem path or a seekable binary file-like object with read(), seek(), and tell()",
+            ));
+        }
+    }
+    let position = value.call_method0("tell")?;
+    let result = (|| -> PyResult<Arc<[u8]>> {
+        value.call_method1("seek", (0, 2))?;
+        check_snapshot_size(value.call_method0("tell")?.extract::<u64>()?)?;
+        value.call_method1("seek", (0,))?;
+        let mut snapshot = Vec::new();
+        loop {
+            let remaining = MAX_TOTAL_UNCOMPRESSED_SIZE - snapshot.len() as u64;
+            let data = value.call_method1("read", ((remaining + 1).min(1024 * 1024),))?;
+            let bytes = data.downcast::<PyBytes>().map_err(|_| {
+                PyTypeError::new_err(
+                    "Workbook input must be opened in binary mode (read() must return bytes)",
+                )
+            })?;
+            check_snapshot_size(snapshot.len() as u64 + bytes.as_bytes().len() as u64)?;
+            if bytes.as_bytes().is_empty() {
+                break;
+            }
+            snapshot.extend_from_slice(bytes.as_bytes());
+        }
+        Ok(snapshot.into())
+    })();
+    match value.call_method1("seek", (&position,)) {
+        Ok(_) => result,
+        Err(restore_error) => {
+            if let Err(original_error) = result {
+                restore_error.set_cause(value.py(), Some(original_error));
+            }
+            Err(restore_error)
+        }
+    }
+}
+
+fn package_may_have_macros<R: Read + std::io::Seek>(package: &mut XlsxPackage<R>) -> bool {
+    for index in 0..package.archive.len() {
+        let Ok(file) = package.archive.by_index(index) else {
+            return true;
+        };
+        let name = file.name().to_ascii_lowercase();
+        if name.contains("vba") || name.contains("macrosheet") {
+            return true;
+        }
+        if name == "[content_types].xml" || name.ends_with(".rels") {
+            let mut xml = String::new();
+            if file
+                .take(MAX_UNCOMPRESSED_FILE_SIZE + 1)
+                .read_to_string(&mut xml)
+                .is_err()
+                || xml.len() as u64 > MAX_UNCOMPRESSED_FILE_SIZE
+            {
+                return true;
+            }
+            let xml = xml.to_ascii_lowercase();
+            // Be conservative when escaped tokens could conceal a macro content type
+            // or relationship. Unsupported packages still retain their snapshot.
+            if xml.contains("macroenabled")
+                || xml.contains("macrosheet")
+                || xml.contains("vba")
+                || xml.contains("&#")
+                || xml.contains("<!doctype")
+                || xml.contains("<!entity")
+                || xml.contains('\0')
+            {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+fn check_binary_writer(value: &Bound<'_, PyAny>) -> PyResult<()> {
+    for method in ["write", "seek", "truncate"] {
+        if !value.hasattr(method)? || !value.getattr(method)?.is_callable() {
+            return Err(PyTypeError::new_err(
+                "Workbook output must be a seekable binary file-like object with write(), seek(), and truncate()",
+            ));
+        }
+    }
+    if value.hasattr("seekable")? && !value.call_method0("seekable")?.is_truthy()? {
+        return Err(PyValueError::new_err(
+            "Workbook output must be seekable to replace its contents",
+        ));
+    }
+    if value.hasattr("mode")? {
+        if let Ok(mode) = value.getattr("mode")?.extract::<String>() {
+            if mode.contains('a') {
+                return Err(PyValueError::new_err(
+                    "Workbook output must not be opened in append mode",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn write_binary_output(value: &Bound<'_, PyAny>, bytes: &[u8]) -> PyResult<()> {
+    // Saving replaces the whole archive, regardless of the stream's initial position.
+    value.call_method1("seek", (0,))?;
+    let mut offset = 0;
+    while offset < bytes.len() {
+        let result =
+            value.call_method1("write", (PyBytes::new_bound(value.py(), &bytes[offset..]),))?;
+        let written = result.extract::<usize>().map_err(|_| {
+            PyTypeError::new_err("Binary write() must return the number of bytes written")
+        })?;
+        if written == 0 || written > bytes.len() - offset {
+            return Err(pyo3::exceptions::PyIOError::new_err(
+                "Binary write() returned an invalid byte count",
+            ));
+        }
+        offset += written;
+    }
+    value.call_method1("truncate", (bytes.len(),))?;
+    Ok(())
+}
+
 pub fn python_value_to_cell_value(val: &Bound<'_, PyAny>) -> PyResult<CellValue> {
     if val.is_none() {
         Ok(CellValue::Empty)
@@ -79,14 +325,26 @@ pub fn python_value_to_cell_value(val: &Bound<'_, PyAny>) -> PyResult<CellValue>
         } else {
             Ok(CellValue::String(s))
         }
-    } else if val.hasattr("strftime")? {
-        let s = val.str()?.to_string();
-        if val.hasattr("hour")? {
-            Ok(CellValue::DateTime(s))
-        } else {
-            Ok(CellValue::Date(s))
-        }
     } else {
+        let datetime = val.py().import_bound("datetime")?;
+        let is_datetime = val.is_instance(&datetime.getattr("datetime")?)?;
+        let is_time = val.is_instance(&datetime.getattr("time")?)?;
+        let is_date = val.is_instance(&datetime.getattr("date")?)?;
+        if is_datetime || is_time || is_date {
+            if (is_datetime || is_time) && !val.call_method0("utcoffset")?.is_none() {
+                return Err(PyValueError::new_err(
+                    "Excel does not support timezone-aware datetime or time values",
+                ));
+            }
+            let s = val.call_method0("isoformat")?.extract::<String>()?;
+            return Ok(if is_datetime || is_time {
+                // Keep time-only ISO values in the existing variant. The current
+                // OOXML writer persists those as text, not numeric Excel times.
+                CellValue::DateTime(s)
+            } else {
+                CellValue::Date(s)
+            });
+        }
         // Fallback: convert to string representation
         let s = val.str()?.to_string();
         Ok(CellValue::String(s))
@@ -107,52 +365,33 @@ pub fn cell_value_to_python<'py>(py: Python<'py>, val: &CellValue) -> PyResult<B
 }
 
 fn date_str_to_pydate<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
-    if s.len() >= 10 && s.as_bytes()[4] == b'-' && s.as_bytes()[7] == b'-' {
-        let year: i32 = s[0..4].parse().unwrap_or(1970);
-        let month: u8 = s[5..7].parse().unwrap_or(1);
-        let day: u8 = s[8..10].parse().unwrap_or(1);
-        let dt_mod = py.import_bound("datetime")?;
-        let date_cls = dt_mod.getattr("date")?;
-        if let Ok(d) = date_cls.call1((year, month, day)) {
-            return Ok(d);
-        }
-    }
-    Ok(s.to_object(py).into_bound(py))
+    parse_iso_temporal(py, "date", s)
 }
 
 fn date_str_to_pydatetime<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, PyAny>> {
-    if s.len() >= 10 && s.as_bytes()[4] == b'-' && s.as_bytes()[7] == b'-' {
-        let year: i32 = s[0..4].parse().unwrap_or(1970);
-        let month: u8 = s[5..7].parse().unwrap_or(1);
-        let day: u8 = s[8..10].parse().unwrap_or(1);
-        let (hour, min, sec, micro) =
-            if s.len() >= 19 && (s.as_bytes()[10] == b' ' || s.as_bytes()[10] == b'T') {
-                let h: u8 = s[11..13].parse().unwrap_or(0);
-                let m: u8 = s[14..16].parse().unwrap_or(0);
-                let sec_str = &s[17..];
-                if let Some((s_part, us_part)) = sec_str.split_once('.') {
-                    let s_val: u8 = s_part.parse().unwrap_or(0);
-                    let us_val: u32 = us_part.parse().unwrap_or(0);
-                    (h, m, s_val, us_val)
-                } else {
-                    let s_val: u8 = sec_str.get(..2).and_then(|x| x.parse().ok()).unwrap_or(0);
-                    (h, m, s_val, 0)
-                }
-            } else {
-                (0, 0, 0, 0)
-            };
-        let dt_mod = py.import_bound("datetime")?;
-        let dt_cls = dt_mod.getattr("datetime")?;
-        if let Ok(dt) = dt_cls.call1((year, month, day, hour, min, sec, micro)) {
-            return Ok(dt);
-        }
+    let kind = if s.as_bytes().get(2) == Some(&b':') {
+        "time"
+    } else {
+        "datetime"
+    };
+    parse_iso_temporal(py, kind, s)
+}
+
+fn parse_iso_temporal<'py>(py: Python<'py>, kind: &str, s: &str) -> PyResult<Bound<'py, PyAny>> {
+    let cls = py.import_bound("datetime")?.getattr(kind)?;
+    // Python 3.9/3.10 fromisoformat does not accept the UTC Z suffix.
+    let normalized = s.strip_suffix('Z').map(|s| format!("{}+00:00", s));
+    match cls.call_method1("fromisoformat", (normalized.as_deref().unwrap_or(s),)) {
+        Ok(value) => Ok(value),
+        Err(err) if err.is_instance_of::<PyValueError>(py) => Ok(s.to_object(py).into_bound(py)),
+        Err(err) => Err(err),
     }
-    Ok(s.to_object(py).into_bound(py))
 }
 
 #[pyclass(name = "Cell")]
 pub struct PyCell {
     wb: Arc<RwLock<Workbook>>,
+    original_package: Option<Arc<[u8]>>,
     sheet_title: Arc<RwLock<String>>,
     row: u32,
     column: u32,
@@ -184,6 +423,7 @@ impl PyCell {
     pub fn parent(&self) -> PyWorksheet {
         PyWorksheet {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
             sheet_title: Arc::clone(&self.sheet_title),
         }
     }
@@ -198,6 +438,19 @@ impl PyCell {
             .map_err(map_rpyxl_err)?;
         let val = ws.get_cell_value(self.row, self.column);
         Ok(matches!(val, CellValue::Date(_) | CellValue::DateTime(_)))
+    }
+
+    #[getter]
+    fn _source_style_id(&self) -> PyResult<Option<usize>> {
+        let wb = self.wb.read();
+        let title = self.sheet_title.read();
+        let sheet = wb
+            .get_sheet(&title)
+            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .map_err(map_rpyxl_err)?;
+        Ok(sheet
+            .get_cell(self.row, self.column)
+            .and_then(|cell| cell.source_xf_index()))
     }
 
     #[getter]
@@ -357,18 +610,40 @@ impl PyCell {
     }
 }
 
+fn structural_edit_args(idx: i64, amount: i64) -> PyResult<(u32, u32)> {
+    let idx = u32::try_from(idx)
+        .ok()
+        .filter(|idx| *idx > 0)
+        .ok_or_else(|| PyValueError::new_err("Index must be a positive worksheet index"))?;
+    let amount = u32::try_from(amount)
+        .map_err(|_| PyValueError::new_err("Amount must be between 0 and 4294967295"))?;
+    Ok((idx, amount))
+}
+
 #[pyclass(name = "Worksheet")]
 pub struct PyWorksheet {
     wb: Arc<RwLock<Workbook>>,
+    original_package: Option<Arc<[u8]>>,
     sheet_title: Arc<RwLock<String>>,
 }
 
 #[pymethods]
 impl PyWorksheet {
+    fn _is_merged_cell(&self, row: u32, column: u32) -> PyResult<bool> {
+        let wb = self.wb.read();
+        let title = self.sheet_title.read();
+        let sheet = wb
+            .get_sheet(&title)
+            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .map_err(map_rpyxl_err)?;
+        Ok(sheet.is_merged_cell(row, column))
+    }
+
     #[getter]
     pub fn parent(&self) -> PyWorkbook {
         PyWorkbook {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
         }
     }
 
@@ -474,6 +749,7 @@ impl PyWorksheet {
 
         Ok(PyCell {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
             sheet_title: Arc::clone(&self.sheet_title),
             row,
             column,
@@ -505,6 +781,7 @@ impl PyWorksheet {
                     py,
                     PyCell {
                         wb: Arc::clone(&self.wb),
+                        original_package: self.original_package.clone(),
                         sheet_title: Arc::clone(&self.sheet_title),
                         row: r,
                         column: c,
@@ -540,6 +817,7 @@ impl PyWorksheet {
                             py,
                             PyCell {
                                 wb: Arc::clone(&self.wb),
+                                original_package: self.original_package.clone(),
                                 sheet_title: Arc::clone(&self.sheet_title),
                                 row: r,
                                 column: c,
@@ -579,6 +857,7 @@ impl PyWorksheet {
                                 py,
                                 PyCell {
                                     wb: Arc::clone(&self.wb),
+                                    original_package: self.original_package.clone(),
                                     sheet_title: Arc::clone(&self.sheet_title),
                                     row: r,
                                     column: c,
@@ -604,6 +883,7 @@ impl PyWorksheet {
                                 py,
                                 PyCell {
                                     wb: Arc::clone(&self.wb),
+                                    original_package: self.original_package.clone(),
                                     sheet_title: Arc::clone(&self.sheet_title),
                                     row: r,
                                     column: c,
@@ -647,6 +927,7 @@ impl PyWorksheet {
                             py,
                             PyCell {
                                 wb: Arc::clone(&self.wb),
+                                original_package: self.original_package.clone(),
                                 sheet_title: Arc::clone(&self.sheet_title),
                                 row: r,
                                 column: c,
@@ -684,6 +965,7 @@ impl PyWorksheet {
                             py,
                             PyCell {
                                 wb: Arc::clone(&self.wb),
+                                original_package: self.original_package.clone(),
                                 sheet_title: Arc::clone(&self.sheet_title),
                                 row: r,
                                 column: c,
@@ -706,6 +988,7 @@ impl PyWorksheet {
                             py,
                             PyCell {
                                 wb: Arc::clone(&self.wb),
+                                original_package: self.original_package.clone(),
                                 sheet_title: Arc::clone(&self.sheet_title),
                                 row: r,
                                 column: c,
@@ -735,6 +1018,7 @@ impl PyWorksheet {
                     py,
                     PyCell {
                         wb: Arc::clone(&self.wb),
+                        original_package: self.original_package.clone(),
                         sheet_title: Arc::clone(&self.sheet_title),
                         row: r,
                         column: col,
@@ -758,6 +1042,7 @@ impl PyWorksheet {
                 py,
                 PyCell {
                     wb: Arc::clone(&self.wb),
+                    original_package: self.original_package.clone(),
                     sheet_title: Arc::clone(&self.sheet_title),
                     row: r,
                     column: c,
@@ -832,6 +1117,71 @@ impl PyWorksheet {
         ws.append(values).map_err(map_rpyxl_err)
     }
 
+    #[pyo3(signature = (idx, amount=1))]
+    pub fn insert_rows(&self, idx: i64, amount: i64) -> PyResult<()> {
+        let (idx, amount) = structural_edit_args(idx, amount)?;
+        let mut wb = self.wb.write();
+        let title = self.sheet_title.read().clone();
+        let ws = wb
+            .get_sheet_mut(&title)
+            .ok_or_else(|| map_rpyxl_err(RpyxlError::SheetNotFound(title)))?;
+        ws.insert_rows(idx, amount).map_err(map_rpyxl_err)
+    }
+
+    #[pyo3(signature = (idx, amount=1))]
+    pub fn delete_rows(&self, idx: i64, amount: i64) -> PyResult<()> {
+        let (idx, amount) = structural_edit_args(idx, amount)?;
+        let mut wb = self.wb.write();
+        let title = self.sheet_title.read().clone();
+        let ws = wb
+            .get_sheet_mut(&title)
+            .ok_or_else(|| map_rpyxl_err(RpyxlError::SheetNotFound(title)))?;
+        ws.delete_rows(idx, amount).map_err(map_rpyxl_err)
+    }
+
+    #[pyo3(signature = (idx, amount=1))]
+    pub fn insert_cols(&self, idx: i64, amount: i64) -> PyResult<()> {
+        let (idx, amount) = structural_edit_args(idx, amount)?;
+        let mut wb = self.wb.write();
+        let title = self.sheet_title.read().clone();
+        let ws = wb
+            .get_sheet_mut(&title)
+            .ok_or_else(|| map_rpyxl_err(RpyxlError::SheetNotFound(title)))?;
+        ws.insert_cols(idx, amount).map_err(map_rpyxl_err)
+    }
+
+    #[pyo3(signature = (idx, amount=1))]
+    pub fn delete_cols(&self, idx: i64, amount: i64) -> PyResult<()> {
+        let (idx, amount) = structural_edit_args(idx, amount)?;
+        let mut wb = self.wb.write();
+        let title = self.sheet_title.read().clone();
+        let ws = wb
+            .get_sheet_mut(&title)
+            .ok_or_else(|| map_rpyxl_err(RpyxlError::SheetNotFound(title)))?;
+        ws.delete_cols(idx, amount).map_err(map_rpyxl_err)
+    }
+
+    #[pyo3(signature = (cell_range, rows=0, cols=0, translate=false))]
+    pub fn move_range(
+        &self,
+        cell_range: &str,
+        rows: i64,
+        cols: i64,
+        translate: bool,
+    ) -> PyResult<()> {
+        if translate {
+            return Err(pyo3::exceptions::PyNotImplementedError::new_err(
+                "Formula translation in move_range is not implemented",
+            ));
+        }
+        let mut wb = self.wb.write();
+        let title = self.sheet_title.read().clone();
+        let ws = wb
+            .get_sheet_mut(&title)
+            .ok_or_else(|| map_rpyxl_err(RpyxlError::SheetNotFound(title)))?;
+        ws.move_range(cell_range, rows, cols).map_err(map_rpyxl_err)
+    }
+
     #[pyo3(signature = (min_row=None, max_row=None, min_col=None, max_col=None, values_only=false))]
     pub fn iter_rows<'py>(
         &self,
@@ -893,6 +1243,7 @@ impl PyWorksheet {
                         py,
                         PyCell {
                             wb: Arc::clone(&self.wb),
+                            original_package: self.original_package.clone(),
                             sheet_title: Arc::clone(&self.sheet_title),
                             row: r,
                             column: c,
@@ -969,6 +1320,7 @@ impl PyWorksheet {
                         py,
                         PyCell {
                             wb: Arc::clone(&self.wb),
+                            original_package: self.original_package.clone(),
                             sheet_title: Arc::clone(&self.sheet_title),
                             row: r,
                             column: c,
@@ -1007,6 +1359,7 @@ impl PyWorksheet {
 #[pyclass(name = "Workbook")]
 pub struct PyWorkbook {
     wb: Arc<RwLock<Workbook>>,
+    original_package: Option<Arc<[u8]>>,
 }
 
 #[pymethods]
@@ -1015,6 +1368,7 @@ impl PyWorkbook {
     pub fn new() -> Self {
         Self {
             wb: Arc::new(RwLock::new(Workbook::new())),
+            original_package: None,
         }
     }
 
@@ -1039,6 +1393,7 @@ impl PyWorkbook {
         let title = wb.active().title.clone();
         Ok(PyWorksheet {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
             sheet_title: Arc::new(RwLock::new(title)),
         })
     }
@@ -1073,6 +1428,7 @@ impl PyWorkbook {
             .into_iter()
             .map(|title| PyWorksheet {
                 wb: Arc::clone(&self.wb),
+                original_package: self.original_package.clone(),
                 sheet_title: Arc::new(RwLock::new(title)),
             })
             .collect()
@@ -1085,6 +1441,7 @@ impl PyWorkbook {
         let sheet_title = ws.title.clone();
         Ok(PyWorksheet {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
             sheet_title: Arc::new(RwLock::new(sheet_title)),
         })
     }
@@ -1096,6 +1453,7 @@ impl PyWorkbook {
         let sheet_title = ws.title.clone();
         Ok(PyWorksheet {
             wb: Arc::clone(&self.wb),
+            original_package: self.original_package.clone(),
             sheet_title: Arc::new(RwLock::new(sheet_title)),
         })
     }
@@ -1134,6 +1492,7 @@ impl PyWorkbook {
         if wb.contains_sheet(title) {
             Ok(PyWorksheet {
                 wb: Arc::clone(&self.wb),
+                original_package: self.original_package.clone(),
                 sheet_title: Arc::new(RwLock::new(title.to_string())),
             })
         } else {
@@ -1163,6 +1522,7 @@ impl PyWorkbook {
         let titles = wb.sheetnames();
         PyWorkbookIter {
             wb: Arc::clone(&slf.wb),
+            original_package: slf.original_package.clone(),
             sheet_titles: titles,
             index: 0,
         }
@@ -1187,17 +1547,174 @@ impl PyWorkbook {
         Ok(false)
     }
 
-    pub fn save(&self, path: &Bound<'_, PyAny>) -> PyResult<()> {
-        let path_str: String = if let Ok(s) = path.extract::<String>() {
-            s
-        } else if let Ok(fspath) = path.call_method0("__fspath__") {
-            fspath.extract::<String>()?
-        } else {
-            path.str()?.to_string()
-        };
+    fn _has_original_package(&self) -> bool {
+        self.original_package.is_some()
+    }
 
+    fn _can_preserve_package(&self) -> bool {
+        self.wb.read().can_preserve_package()
+    }
+
+    fn _enable_plain_structure(&self, py: Python<'_>) -> PyResult<bool> {
+        let workbook = Arc::clone(&self.wb);
+        py.allow_threads(move || {
+            rpyxl_ooxml::writer::enable_plain_structural_edits(&mut workbook.write())
+        })
+        .map_err(map_rpyxl_err)
+    }
+
+    fn _original_package<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
+        let bytes = self
+            .original_package
+            .as_ref()
+            .ok_or_else(|| PyValueError::new_err("Workbook has no original package"))?;
+        Ok(PyBytes::new_bound(py, bytes))
+    }
+
+    fn _source_style_record(&self, index: usize) -> PyResult<RichStyleInput> {
         let wb = self.wb.read();
-        save_workbook(&path_str, &wb).map_err(map_rpyxl_err)
+        let style = wb
+            .source_styles()
+            .get(index)
+            .ok_or_else(|| PyIndexError::new_err("Source style index out of range"))?;
+        Ok((
+            style.font.clone(),
+            style.fill.clone(),
+            style.border.clone(),
+            style.alignment.clone(),
+            style.protection.clone(),
+        ))
+    }
+
+    fn _update_cell_styles(
+        &self,
+        py: Python<'_>,
+        records: Vec<RichStyleInput>,
+        assignments: Vec<(String, u32, u32, usize)>,
+    ) -> PyResult<()> {
+        let styles: Vec<_> = records
+            .into_iter()
+            .map(|(font, fill, border, alignment, protection)| {
+                Arc::new(RichStyle {
+                    font,
+                    fill,
+                    border,
+                    alignment,
+                    protection,
+                })
+            })
+            .collect();
+        let workbook = Arc::clone(&self.wb);
+        py.allow_threads(move || -> RpyxlResult<()> {
+            let mut wb = workbook.write();
+            // Validate the whole batch before changing any cells.
+            for (title, row, column, index) in &assignments {
+                if wb.get_sheet(title).is_none() {
+                    return Err(RpyxlError::SheetNotFound(title.clone()));
+                }
+                if !(1..=MAX_ROW).contains(row) {
+                    return Err(RpyxlError::RowOutOfBounds(*row));
+                }
+                if !(1..=MAX_COLUMN).contains(column) {
+                    return Err(RpyxlError::ColumnOutOfBounds(*column));
+                }
+                if *index >= styles.len() {
+                    return Err(RpyxlError::ValueError(
+                        "Invalid rich-style record index".into(),
+                    ));
+                }
+            }
+            for (title, row, column, index) in assignments {
+                let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
+                let cell = sheet.get_or_create_cell(row, column)?;
+                cell.rich_style = Some(Arc::clone(&styles[index]));
+                cell.source_xf_explicit = true;
+            }
+            Ok(())
+        })
+        .map_err(map_rpyxl_err)
+    }
+
+    fn _replace_cell_styles(
+        &self,
+        py: Python<'_>,
+        records: Vec<RichStyleInput>,
+        assignments: Vec<(String, u32, u32, usize)>,
+    ) -> PyResult<()> {
+        let styles: Vec<_> = records
+            .into_iter()
+            .map(|(font, fill, border, alignment, protection)| {
+                Arc::new(RichStyle {
+                    font,
+                    fill,
+                    border,
+                    alignment,
+                    protection,
+                })
+            })
+            .collect();
+        let workbook = Arc::clone(&self.wb);
+        py.allow_threads(move || -> RpyxlResult<()> {
+            let mut wb = workbook.write();
+            // Validate the complete replacement before clearing or creating cells.
+            for (title, row, column, index) in &assignments {
+                if wb.get_sheet(title).is_none() {
+                    return Err(RpyxlError::SheetNotFound(title.clone()));
+                }
+                if !(1..=MAX_ROW).contains(row) {
+                    return Err(RpyxlError::RowOutOfBounds(*row));
+                }
+                if !(1..=MAX_COLUMN).contains(column) {
+                    return Err(RpyxlError::ColumnOutOfBounds(*column));
+                }
+                if *index >= styles.len() {
+                    return Err(RpyxlError::ValueError(
+                        "Invalid rich-style record index".into(),
+                    ));
+                }
+            }
+            for sheet in wb.sheets_mut() {
+                sheet.clear_rich_styles();
+            }
+            for (title, row, column, index) in assignments {
+                let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
+                let cell = sheet.get_or_create_cell(row, column)?;
+                cell.rich_style = Some(Arc::clone(&styles[index]));
+                cell.source_xf_explicit = true;
+            }
+            Ok(())
+        })
+        .map_err(map_rpyxl_err)
+    }
+
+    #[pyo3(signature = (path, *, preserve_original=true))]
+    pub fn save(&self, path: &Bound<'_, PyAny>, preserve_original: bool) -> PyResult<()> {
+        let py = path.py();
+        let wb = Arc::clone(&self.wb);
+        if let Some(path) = filesystem_path(path)? {
+            return py
+                .allow_threads(move || {
+                    if preserve_original {
+                        save_workbook(path, &wb.read())
+                    } else {
+                        save_workbook_generated(path, &wb.read())
+                    }
+                })
+                .map_err(map_rpyxl_err);
+        }
+        check_binary_writer(path)?;
+        let bytes = py
+            .allow_threads(move || {
+                let mut buffer = Cursor::new(Vec::new());
+                if preserve_original {
+                    write_workbook(&mut buffer, &wb.read())?;
+                } else {
+                    write_workbook_generated(&mut buffer, &wb.read())?;
+                }
+                Ok::<_, RpyxlError>(buffer.into_inner())
+            })
+            .map_err(map_rpyxl_err)?;
+        write_binary_output(path, &bytes)
     }
 
     pub fn __repr__(&self) -> String {
@@ -1214,6 +1731,7 @@ impl Default for PyWorkbook {
 #[pyclass]
 pub struct PyWorkbookIter {
     wb: Arc<RwLock<Workbook>>,
+    original_package: Option<Arc<[u8]>>,
     sheet_titles: Vec<String>,
     index: usize,
 }
@@ -1230,6 +1748,7 @@ impl PyWorkbookIter {
             self.index += 1;
             Some(PyWorksheet {
                 wb: Arc::clone(&self.wb),
+                original_package: self.original_package.clone(),
                 sheet_title: Arc::new(RwLock::new(title)),
             })
         } else {
@@ -1305,7 +1824,8 @@ impl PyRowIterator {
     }
 
     fn __next__<'py>(&mut self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
-        match self.rx.recv() {
+        let rx = &mut self.rx;
+        match py.allow_threads(move || rx.recv()) {
             Ok(Ok(Some(cells))) => {
                 let row_num = self.current_row_idx;
                 self.current_row_idx += 1;
@@ -1405,7 +1925,7 @@ impl PyRowIterator {
 
 #[pyclass(name = "ReadOnlyWorksheet")]
 pub struct PyReadOnlyWorksheet {
-    file_path: String,
+    source: WorkbookSource,
     title: String,
     target_path: String,
     shared_strings: Arc<SharedStringsTable>,
@@ -1458,25 +1978,24 @@ impl PyReadOnlyWorksheet {
     }
 
     pub fn cell<'py>(&self, py: Python<'py>, row: u32, column: u32) -> PyResult<PyReadOnlyCell> {
-        let file = std::fs::File::open(&self.file_path).map_err(|e| {
-            map_rpyxl_err(RpyxlError::IoError(format!("Failed to open file: {}", e)))
-        })?;
-        let mut archive = zip::ZipArchive::new(std::io::BufReader::new(file))
-            .map_err(|e| map_rpyxl_err(RpyxlError::IoError(format!("Invalid zip: {}", e))))?;
-        rpyxl_ooxml::validate_zip_archive_security(&mut archive).map_err(map_rpyxl_err)?;
-        let sheet_file = archive.by_name(&self.target_path).map_err(|e| {
-            map_rpyxl_err(RpyxlError::IoError(format!("Cannot open sheet XML: {}", e)))
-        })?;
-
-        let cell_val = read_single_cell(
-            sheet_file,
-            row,
-            column,
-            &self.shared_strings,
-            &self.styles,
-            self.data_only,
-        )
-        .map_err(map_rpyxl_err)?;
+        let cell_val = py
+            .allow_threads(|| {
+                let mut archive = zip::ZipArchive::new(self.source.open()?)
+                    .map_err(|e| RpyxlError::IoError(format!("Invalid zip: {}", e)))?;
+                rpyxl_ooxml::validate_zip_archive_security(&mut archive)?;
+                let sheet_file = archive
+                    .by_name(&self.target_path)
+                    .map_err(|e| RpyxlError::IoError(format!("Cannot open sheet XML: {}", e)))?;
+                read_single_cell(
+                    sheet_file,
+                    row,
+                    column,
+                    &self.shared_strings,
+                    &self.styles,
+                    self.data_only,
+                )
+            })
+            .map_err(map_rpyxl_err)?;
 
         let dt = cell_val.data_type();
         let py_val = cell_value_to_python(py, &cell_val)?.unbind();
@@ -1544,31 +2063,27 @@ impl PyReadOnlyWorksheet {
         let (tx, rx) =
             std::sync::mpsc::sync_channel::<RpyxlResult<Option<Vec<(u32, CellValue)>>>>(64);
 
-        let file_path = self.file_path.clone();
+        let source = self.source.clone();
         let target_path = self.target_path.clone();
         let shared_strings = Arc::clone(&self.shared_strings);
         let styles = Arc::clone(&self.styles);
         let data_only = self.data_only;
 
         std::thread::spawn(move || {
-            let file = match std::fs::File::open(&file_path) {
-                Ok(f) => f,
+            let reader = match source.open() {
+                Ok(reader) => reader,
                 Err(e) => {
-                    let _ = tx.send(Err(RpyxlError::IoError(format!(
-                        "Failed to open {}: {}",
-                        file_path, e
-                    ))));
+                    let _ = tx.send(Err(e));
                     return;
                 }
             };
-            let mut archive: zip::ZipArchive<std::io::BufReader<std::fs::File>> =
-                match zip::ZipArchive::new(std::io::BufReader::new(file)) {
-                    Ok(a) => a,
-                    Err(e) => {
-                        let _ = tx.send(Err(RpyxlError::IoError(format!("Invalid zip: {}", e))));
-                        return;
-                    }
-                };
+            let mut archive = match zip::ZipArchive::new(reader) {
+                Ok(a) => a,
+                Err(e) => {
+                    let _ = tx.send(Err(RpyxlError::IoError(format!("Invalid zip: {}", e))));
+                    return;
+                }
+            };
             if let Err(e) = rpyxl_ooxml::validate_zip_archive_security(&mut archive) {
                 let _ = tx.send(Err(e));
                 return;
@@ -1647,7 +2162,7 @@ impl PyReadOnlyWorksheet {
 
 #[pyclass(name = "ReadOnlyWorkbook")]
 pub struct PyReadOnlyWorkbook {
-    file_path: String,
+    source: WorkbookSource,
     sheet_infos: Vec<SheetInfo>,
     shared_strings: Arc<SharedStringsTable>,
     styles: Arc<Styles>,
@@ -1685,7 +2200,7 @@ impl PyReadOnlyWorkbook {
         };
         let info = &self.sheet_infos[idx];
         Ok(PyReadOnlyWorksheet {
-            file_path: self.file_path.clone(),
+            source: self.source.clone(),
             title: info.name.clone(),
             target_path: info.target_path.clone(),
             shared_strings: Arc::clone(&self.shared_strings),
@@ -1703,7 +2218,7 @@ impl PyReadOnlyWorkbook {
         self.sheet_infos
             .iter()
             .map(|info| PyReadOnlyWorksheet {
-                file_path: self.file_path.clone(),
+                source: self.source.clone(),
                 title: info.name.clone(),
                 target_path: info.target_path.clone(),
                 shared_strings: Arc::clone(&self.shared_strings),
@@ -1725,7 +2240,7 @@ impl PyReadOnlyWorkbook {
             .ok_or_else(|| PyKeyError::new_err(format!("Worksheet {} does not exist.", title)))?;
 
         Ok(PyReadOnlyWorksheet {
-            file_path: self.file_path.clone(),
+            source: self.source.clone(),
             title: info.name.clone(),
             target_path: info.target_path.clone(),
             shared_strings: Arc::clone(&self.shared_strings),
@@ -1748,7 +2263,7 @@ impl PyReadOnlyWorkbook {
 
     pub fn __iter__(&self) -> PyReadOnlyWorkbookIter {
         PyReadOnlyWorkbookIter {
-            file_path: self.file_path.clone(),
+            source: self.source.clone(),
             sheet_infos: self.sheet_infos.clone(),
             shared_strings: Arc::clone(&self.shared_strings),
             styles: Arc::clone(&self.styles),
@@ -1784,7 +2299,7 @@ impl PyReadOnlyWorkbook {
 
 #[pyclass]
 pub struct PyReadOnlyWorkbookIter {
-    file_path: String,
+    source: WorkbookSource,
     sheet_infos: Vec<SheetInfo>,
     shared_strings: Arc<SharedStringsTable>,
     styles: Arc<Styles>,
@@ -1803,7 +2318,7 @@ impl PyReadOnlyWorkbookIter {
             let info = &self.sheet_infos[self.index];
             self.index += 1;
             Some(PyReadOnlyWorksheet {
-                file_path: self.file_path.clone(),
+                source: self.source.clone(),
                 title: info.name.clone(),
                 target_path: info.target_path.clone(),
                 shared_strings: Arc::clone(&self.shared_strings),
@@ -1828,23 +2343,17 @@ impl PyReadOnlyWorkbookIter {
 #[pyo3(signature = (path, read_only=false, data_only=false))]
 pub fn load_workbook<'py>(
     py: Python<'py>,
-    path: &str,
+    path: &Bound<'_, PyAny>,
     read_only: bool,
     data_only: bool,
 ) -> PyResult<Bound<'py, PyAny>> {
-    let p = std::path::Path::new(path);
-    if !p.exists() {
-        return Err(pyo3::exceptions::PyFileNotFoundError::new_err(format!(
-            "No such file or directory: '{}'",
-            path
-        )));
-    }
-
-    let mut package = XlsxPackage::open(path, read_only, data_only).map_err(map_rpyxl_err)?;
-
     if read_only {
+        let source = workbook_source(path)?;
+        let package = py
+            .allow_threads(|| XlsxPackage::from_reader(source.open()?, true, data_only))
+            .map_err(map_rpyxl_err)?;
         let ro_wb = PyReadOnlyWorkbook {
-            file_path: path.to_string(),
+            source,
             sheet_infos: package.sheets,
             shared_strings: package.shared_strings,
             styles: package.styles,
@@ -1854,9 +2363,45 @@ pub fn load_workbook<'py>(
         };
         Ok(Bound::new(py, ro_wb)?.into_any())
     } else {
-        let wb = package.to_workbook().map_err(map_rpyxl_err)?;
+        let snapshot = editable_workbook_snapshot(path)?;
+        let archive = Arc::clone(&snapshot);
+        let wb = py
+            .allow_threads(move || -> RpyxlResult<Workbook> {
+                let mut package =
+                    XlsxPackage::from_reader(Cursor::new(Arc::clone(&archive)), false, data_only)?;
+                let mut wb = package.to_workbook()?;
+                if wb.sheets().iter().all(|sheet| sheet.xml_template.is_some())
+                    && !package_may_have_macros(&mut package)
+                {
+                    if let (Some(styles_path), Some(styles_xml)) =
+                        (&package.styles_path, package.styles.source_xml())
+                    {
+                        wb.package_template = Some(Arc::new(PackageTemplate {
+                            archive,
+                            workbook_path: package.workbook_path.clone(),
+                            styles_path: styles_path.clone(),
+                            styles_xml: styles_xml.to_owned(),
+                            sheet_parts: package
+                                .sheets
+                                .iter()
+                                .map(|sheet| sheet.target_path.clone())
+                                .collect(),
+                            sheet_names: package
+                                .sheets
+                                .iter()
+                                .map(|sheet| sheet.name.clone())
+                                .collect(),
+                            active_index: package.active_sheet_index,
+                            date_1904: package.styles.date_1904,
+                        }));
+                    }
+                }
+                Ok(wb)
+            })
+            .map_err(map_rpyxl_err)?;
         let py_wb = PyWorkbook {
             wb: Arc::new(RwLock::new(wb)),
+            original_package: Some(snapshot),
         };
         Ok(Bound::new(py, py_wb)?.into_any())
     }
@@ -2042,19 +2587,32 @@ impl PyWriteOnlyWorkbook {
             ));
         }
 
-        let path_str: String = if let Ok(s) = path.extract::<String>() {
-            s
-        } else if let Ok(fspath) = path.call_method0("__fspath__") {
-            fspath.extract::<String>()?
-        } else {
-            path.str()?.to_string()
-        };
-
-        let mut sheet_guards: Vec<_> = self.sheets.iter().map(|s| s.write()).collect();
-        let mut refs: Vec<&mut WriteOnlySheet> =
-            sheet_guards.iter_mut().map(|g| &mut **g).collect();
-
-        save_write_only_workbook(&path_str, &mut refs).map_err(map_rpyxl_err)
+        let py = path.py();
+        let destination = filesystem_path(path)?;
+        if destination.is_none() {
+            check_binary_writer(path)?;
+        }
+        let sheets = self.sheets.clone();
+        let bytes = py
+            .allow_threads(move || {
+                // Acquire and drop every native lock while detached from Python.
+                let mut sheet_guards: Vec<_> = sheets.iter().map(|s| s.write()).collect();
+                let mut refs: Vec<&mut WriteOnlySheet> =
+                    sheet_guards.iter_mut().map(|g| &mut **g).collect();
+                if let Some(destination) = destination {
+                    save_write_only_workbook(destination, &mut refs)?;
+                    Ok::<_, RpyxlError>(None)
+                } else {
+                    let mut buffer = Cursor::new(Vec::new());
+                    write_write_only_workbook(&mut buffer, &mut refs)?;
+                    Ok(Some(buffer.into_inner()))
+                }
+            })
+            .map_err(map_rpyxl_err)?;
+        if let Some(bytes) = bytes {
+            write_binary_output(path, &bytes)?;
+        }
+        Ok(())
     }
 
     pub fn close(&mut self) -> PyResult<()> {

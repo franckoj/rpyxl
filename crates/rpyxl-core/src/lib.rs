@@ -1,6 +1,7 @@
 pub mod cell;
 pub mod coordinate;
 pub mod error;
+pub mod package;
 pub mod workbook;
 pub mod worksheet;
 

@@ -1,37 +1,41 @@
 """Comprehensive Phase 4 openpyxl behavioral compatibility test suite."""
 
 import datetime
-import pytest
-import rpyxl
-from rpyxl.cell import (
-    TYPE_STRING,
-    TYPE_NUMERIC,
-    TYPE_BOOL,
-    TYPE_NULL,
-    TYPE_FORMULA,
-    TYPE_DATE,
-)
-from rpyxl.utils import (
-    get_column_letter,
-    column_index_from_string,
-    coordinate_to_tuple,
-    range_boundaries,
-    quote_sheetname,
-)
-from rpyxl.utils.exceptions import (
-    OpenpyxlException,
-    InvalidFileException,
-    SheetTitleException,
-    CellCoordinatesException,
-    NamedRangeException,
-)
-from rpyxl.styles import Font, PatternFill, Alignment, Border, Side, Color
 
 import openpyxl
+import pytest
 from openpyxl.utils import (
-    range_boundaries as o_range_boundaries,
     quote_sheetname as o_quote_sheetname,
 )
+from openpyxl.utils import (
+    range_boundaries as o_range_boundaries,
+)
+from rpyxl.cell import (
+    TYPE_BOOL,
+    TYPE_DATE,
+    TYPE_FORMULA,
+    TYPE_NULL,
+    TYPE_NUMERIC,
+    TYPE_STRING,
+)
+from rpyxl.comments import Comment
+from rpyxl.styles import Alignment, Border, Color, Font, PatternFill, Side
+from rpyxl.utils import (
+    column_index_from_string,
+    coordinate_to_tuple,
+    get_column_letter,
+    quote_sheetname,
+    range_boundaries,
+)
+from rpyxl.utils.exceptions import (
+    CellCoordinatesException,
+    InvalidFileException,
+    NamedRangeException,
+    OpenpyxlException,
+    SheetTitleException,
+)
+
+import rpyxl
 
 
 class TestWorkbookCompatibility:
@@ -341,13 +345,21 @@ class TestCellCompatibility:
         cell.number_format = "#,##0.00"
         assert cell.number_format == "#,##0.00"
 
+        reference_wb = openpyxl.Workbook()
+        reference = reference_wb.active["A1"]
         assert cell.comment is None
-        cell.comment = "Review this figure"
-        assert cell.comment == "Review this figure"
+        cell.comment = Comment("Review this figure", "Reviewer")
+        reference.comment = openpyxl.comments.Comment("Review this figure", "Reviewer")
+        assert cell.comment.text == reference.comment.text
+        assert cell.comment.author == reference.comment.author
 
         assert cell.hyperlink is None
         cell.hyperlink = "https://example.com"
-        assert cell.hyperlink == "https://example.com"
+        reference.hyperlink = "https://example.com"
+        assert cell.hyperlink.target == reference.hyperlink.target
+        assert cell.hyperlink.ref == reference.hyperlink.ref
+        assert cell.value == reference.value
+        reference_wb.close()
 
         wb.close()
 
@@ -390,7 +402,9 @@ class TestUtilsAndStylesFoundation:
 
         fill = PatternFill(fill_type="solid", start_color="FFFF0000")
         assert fill.fill_type == "solid"
-        assert fill.start_color == "FFFF0000"
+        reference_fill = openpyxl.styles.PatternFill(fill_type="solid", start_color="FFFF0000")
+        assert fill.start_color.rgb == reference_fill.start_color.rgb
+        assert fill.start_color.type == reference_fill.start_color.type
 
         align = Alignment(horizontal="center", vertical="center", wrap_text=True)
         assert align.horizontal == "center"
@@ -401,4 +415,4 @@ class TestUtilsAndStylesFoundation:
         assert border.left.style == "thin"
 
         color = Color(rgb="FF0000")
-        assert color.rgb == "FF0000"
+        assert color.rgb == openpyxl.styles.Color(rgb="FF0000").rgb

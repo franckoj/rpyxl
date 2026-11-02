@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "rpyxl"
-version = "0.1.1"
+version = "0.2.0"
 description = "A high-performance, Rust-powered alternative to openpyxl"
 authors = [{ name = "RPyXL Contributors" }]
 license = { text = "MIT OR Apache-2.0" }
@@ -36,6 +36,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Office/Business :: Financial :: Spreadsheet",
     "Topic :: Software Development :: Libraries :: Python Modules",
 ]
@@ -47,7 +48,7 @@ Homepage = "https://github.com/franckoj/rpyxl"
 Repository = "https://github.com/franckoj/rpyxl"
 Documentation = "https://github.com/franckoj/rpyxl#readme"
 Issues = "https://github.com/franckoj/rpyxl/issues"
-Changelog = "https://github.com/franckoj/rpyxl/blob/main/docs/development_progress.md"
+Changelog = "https://github.com/franckoj/rpyxl/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 dev = [

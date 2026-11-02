@@ -1,7 +1,6 @@
 """Regression tests for the public coordinate utilities."""
 
 import pytest
-
 from rpyxl.utils import coordinate_to_tuple, range_boundaries
 
 
@@ -25,8 +24,23 @@ def test_coordinate_to_tuple_valid(coordinate, expected):
 @pytest.mark.parametrize(
     "coordinate",
     [
-        "A1B2", "1A", "A1B", "1A2", "A1$2", "A$B1", "$$A1", "A$$1",
-        "A1$", "A\u0661", "\u212a1", "\u017f1", "A 1", "A1:B2", "", "A", "1",
+        "A1B2",
+        "1A",
+        "A1B",
+        "1A2",
+        "A1$2",
+        "A$B1",
+        "$$A1",
+        "A$$1",
+        "A1$",
+        "A\u0661",
+        "\u212a1",
+        "\u017f1",
+        "A 1",
+        "A1:B2",
+        "",
+        "A",
+        "1",
     ],
 )
 def test_coordinate_to_tuple_rejects_malformed_references(coordinate):

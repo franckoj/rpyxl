@@ -1,7 +1,6 @@
 """Regression tests for range separator validation."""
 
 import pytest
-
 from rpyxl.utils import range_boundaries
 
 

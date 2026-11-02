@@ -61,12 +61,28 @@ impl CellValue {
     }
 }
 
+/// OOXML element fragments for the native rich-style components.
+/// Fragments are validated by the OOXML writer before being persisted.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
+pub struct RichStyle {
+    pub font: Option<String>,
+    pub fill: Option<String>,
+    pub border: Option<String>,
+    pub alignment: Option<String>,
+    pub protection: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cell {
     pub row: u32,
     pub column: u32,
     pub value: CellValue,
     pub number_format: Option<String>,
+    pub rich_style: Option<std::sync::Arc<RichStyle>>,
+    /// One-based original XF index; NonZero keeps provenance compact.
+    pub source_xf_id: Option<std::num::NonZeroU32>,
+    /// Explicit XF zero overrides row/column defaults; absence can inherit them.
+    pub source_xf_explicit: bool,
     pub comment: Option<String>,
     pub hyperlink: Option<String>,
 }
@@ -78,9 +94,16 @@ impl Cell {
             column,
             value,
             number_format: None,
+            rich_style: None,
+            source_xf_id: None,
+            source_xf_explicit: false,
             comment: None,
             hyperlink: None,
         }
+    }
+
+    pub fn source_xf_index(&self) -> Option<usize> {
+        self.source_xf_id.map(|id| (id.get() - 1) as usize)
     }
 
     pub fn coordinate(&self) -> RpyxlResult<String> {

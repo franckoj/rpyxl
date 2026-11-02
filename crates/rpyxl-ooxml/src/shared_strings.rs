@@ -1,8 +1,31 @@
-use quick_xml::events::Event;
+use quick_xml::encoding::Decoder;
+use quick_xml::events::{BytesText, Event};
 use quick_xml::reader::Reader;
+use std::borrow::Cow;
 use std::io::Read;
 
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
+
+pub(crate) fn decode_xml_text<'a>(
+    text: &BytesText<'a>,
+    decoder: Decoder,
+) -> RpyxlResult<Cow<'a, str>> {
+    if !text.as_ref().contains(&b'\r') {
+        return text.unescape().map_err(|error| {
+            RpyxlError::XmlSecurityViolation(format!("Invalid XML text: {error}"))
+        });
+    }
+
+    let decoded = decoder.decode(text.as_ref()).map_err(|error| {
+        RpyxlError::XmlSecurityViolation(format!("Invalid XML text encoding: {error}"))
+    })?;
+    // XML normalizes literal line endings before expanding character references.
+    // Doing this after unescaping would corrupt explicit &#13; cell contents.
+    let normalized = decoded.replace("\r\n", "\n").replace('\r', "\n");
+    quick_xml::escape::unescape(&normalized)
+        .map(|value| Cow::Owned(value.into_owned()))
+        .map_err(|error| RpyxlError::XmlSecurityViolation(format!("Invalid XML text: {error}")))
+}
 
 #[derive(Debug, Default, Clone)]
 pub struct SharedStringsTable {
@@ -40,9 +63,8 @@ impl SharedStringsTable {
 
                 Ok(Event::Text(ref e)) => {
                     if in_t {
-                        if let Ok(text) = e.unescape() {
-                            current_string.push_str(&text);
-                        }
+                        let text = decode_xml_text(e, xml_reader.decoder())?;
+                        current_string.push_str(&text);
                     }
                 }
                 Ok(Event::End(ref e)) => match e.local_name().as_ref() {

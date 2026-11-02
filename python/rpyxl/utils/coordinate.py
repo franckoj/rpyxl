@@ -11,7 +11,7 @@ def get_column_letter(col_idx: int) -> str:
     letters = []
     while col > 0:
         rem = (col - 1) % 26
-        letters.append(chr(ord('A') + rem))
+        letters.append(chr(ord("A") + rem))
         col = (col - 1) // 26
     return "".join(reversed(letters))
 
@@ -23,9 +23,11 @@ def column_index_from_string(col_str: str) -> int:
         raise ValueError(f"Invalid column string: {col_str}")
     col = 0
     for char in clean:
-        col = col * 26 + (ord(char) - ord('A') + 1)
+        col = col * 26 + (ord(char) - ord("A") + 1)
     if not (1 <= col <= 16384):
-        raise ValueError(f"Column index for {col_str} is out of bounds (allowed: 1-16384)")
+        raise ValueError(
+            f"Column index for {col_str} is out of bounds (allowed: 1-16384)"
+        )
     return col
 
 
