@@ -97,6 +97,13 @@ impl Workbook {
                 && self.date_1904 == source.date_1904
                 && self.sheets.len() == source.sheet_parts.len()
                 && self.sheets.iter().all(|sheet| sheet.xml_template.is_some())
+                && (!self.sheets.iter().any(|sheet| {
+                    sheet.structural_passthrough_enabled() || sheet.source_rows_changed()
+                }) || (self.source_styles_xml.as_deref() == Some(source.styles_xml.as_str())
+                    && self
+                        .sheets
+                        .iter()
+                        .all(|sheet| sheet.plain_structural_proof_matches(source))))
         })
     }
 

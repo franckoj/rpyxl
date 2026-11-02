@@ -51,6 +51,7 @@ class Workbook(metaclass=_WorkbookMeta):
         self._book = None
         self._full_metadata_loaded = False
         self._structure_changed = False
+        self._native_structure_only = False
         self._native_package_api = (
             not self.read_only
             and not self.write_only
@@ -228,7 +229,23 @@ class Workbook(metaclass=_WorkbookMeta):
         self._require_sheet(worksheet)
         return self.sheetnames.index(worksheet.title)
 
+    def _try_native_structure(self):
+        if (
+            not self._has_original
+            or not self._native_package_api
+            or not hasattr(self._native, "_enable_plain_structure")
+            or self._book is not None
+            or self._native_style_reader is None
+            or self._native_style_reader.opaque_cells
+        ):
+            return False
+        if not self._native._enable_plain_structure():
+            return False
+        self._native_structure_only = True
+        return True
+
     def _prepare_structure(self):
+        self._native_structure_only = False
         if self._has_original:
             self._ensure_metadata()
         if self._native_style_reader is not None:
@@ -344,16 +361,27 @@ class Workbook(metaclass=_WorkbookMeta):
         self._check_writable()
         if self._native_style_reader is not None:
             self._native_style_reader.flush()
+        needs_overlay = None
+        force_overlay = False
         if self._native_package_api:
             from .._native_styles import requires_metadata_overlay
 
-            needs_overlay = self._structure_changed or requires_metadata_overlay(
-                self._book
-            )
             can_preserve = (
                 not self._has_original or self._native._can_preserve_package()
             )
+            # Opt-in is not a cached proof: later edits can invalidate the
+            # native package's pinned structural eligibility before any save.
+            force_overlay = self._native_structure_only and not can_preserve
+            needs_overlay = (
+                force_overlay
+                or (self._structure_changed and not self._native_structure_only)
+                or requires_metadata_overlay(self._book)
+            )
             if self._has_original and (needs_overlay or not can_preserve):
+                # Promotion may introduce annotations and original XML that the
+                # sparse sidecar's eligibility check could not see.
+                if not self._full_metadata_loaded:
+                    needs_overlay = None
                 self._ensure_metadata()
             elif not self._overlay:
                 return self._native.save(filename)
@@ -376,9 +404,13 @@ class Workbook(metaclass=_WorkbookMeta):
                 self._native._update_cell_styles(records, assignments)
             else:
                 self._native._replace_cell_styles(records, assignments)
-            if not self._structure_changed and not requires_metadata_overlay(
-                self._book
-            ):
+            if needs_overlay is None:
+                needs_overlay = (
+                    force_overlay
+                    or (self._structure_changed and not self._native_structure_only)
+                    or requires_metadata_overlay(self._book)
+                )
+            if not needs_overlay:
                 return self._native.save(filename)
         # Only features not yet handled by Rust need an additional ZIP/XML pass.
         with TemporaryFile(mode="w+b") as generated:

@@ -832,18 +832,19 @@ pub fn parse_worksheet_into<R: Read>(
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"r" => {
-                                    if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                        current_coord = v.to_owned();
+                                    if let Ok(v) = attr.decode_and_unescape_value(decoder) {
+                                        current_coord = v.into_owned();
                                     }
                                 }
                                 b"t" => {
-                                    if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                        current_type = v.to_owned();
+                                    if let Ok(v) = attr.decode_and_unescape_value(decoder) {
+                                        current_type = v.into_owned();
                                     }
                                 }
                                 b"s" => {
                                     current_style_explicit = true;
-                                    current_style = std::str::from_utf8(&attr.value)
+                                    current_style = attr
+                                        .decode_and_unescape_value(decoder)
                                         .ok()
                                         .and_then(|v| v.parse().ok())
                                         .unwrap_or(0);

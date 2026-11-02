@@ -140,10 +140,10 @@ class StylePool:
         self._styles = WeakValueDictionary()
 
     def _intern(self, frozen):
-        existing = self._styles.get(frozen.fingerprint)
+        existing = self._styles.get(frozen._fingerprint)
         if existing is not None:
             return existing
-        self._styles[frozen.fingerprint] = frozen
+        self._styles[frozen._fingerprint] = frozen
         return frozen
 
     def _freeze(self, value, token):
@@ -178,6 +178,9 @@ class StylePool:
         if type(value) in _STYLE_TYPES:
             token = value._style_token()
             if token is not None:
+                cached = value._style_cache
+                if cached is not None and cached[0] == token:
+                    return self._intern(cached[1])
                 return self._freeze(value, token)
         return deepcopy(value)
 

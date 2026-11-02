@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use crate::cell::{Cell, CellValue};
 use crate::coordinate::{
@@ -6,7 +7,7 @@ use crate::coordinate::{
     MIN_ROW,
 };
 use crate::error::{RpyxlError, RpyxlResult};
-use crate::package::WorksheetTemplate;
+use crate::package::{PackageTemplate, WorksheetTemplate};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Worksheet {
@@ -16,6 +17,11 @@ pub struct Worksheet {
     pub unsupported_cell_content: bool,
     /// Original merged ranges, in (min_row, min_col, max_row, max_col) order.
     pub merged_ranges: Vec<(u32, u32, u32, u32)>,
+    // Only the OOXML proof entry point should install this snapshot. Keeping it
+    // private prevents edits to public templates from silently reusing a proof.
+    structural_source: Option<Arc<PackageTemplate>>,
+    structural_template: Option<WorksheetTemplate>,
+    source_rows_changed: bool,
     cells: BTreeMap<(u32, u32), Cell>,
     cached_min_row: Option<u32>,
     cached_max_row: Option<u32>,
@@ -32,12 +38,65 @@ impl Worksheet {
             xml_template: None,
             unsupported_cell_content: false,
             merged_ranges: Vec::new(),
+            structural_source: None,
+            structural_template: None,
+            source_rows_changed: false,
             cells: BTreeMap::new(),
             cached_min_row: None,
             cached_max_row: None,
             cached_min_col: None,
             cached_max_col: None,
         })
+    }
+
+    pub fn structural_passthrough_enabled(&self) -> bool {
+        self.structural_source.is_some()
+    }
+
+    pub fn source_rows_changed(&self) -> bool {
+        self.source_rows_changed
+    }
+
+    pub fn is_plain_structural_content(&self) -> bool {
+        !self.unsupported_cell_content
+            && self.merged_ranges.is_empty()
+            && self.cells.iter().all(|(&(row, col), cell)| {
+                cell.row == row
+                    && cell.column == col
+                    && !matches!(cell.value, CellValue::Formula { .. })
+                    && !matches!(cell.value, CellValue::Float(value) if !value.is_finite())
+                    && cell.comment.is_none()
+                    && cell.hyperlink.is_none()
+            })
+    }
+
+    pub fn plain_structural_proof_matches(&self, source: &Arc<PackageTemplate>) -> bool {
+        self.structural_source
+            .as_ref()
+            .is_some_and(|proof| Arc::ptr_eq(proof, source))
+            && self.xml_template.is_some()
+            && self.xml_template == self.structural_template
+            && self.is_plain_structural_content()
+    }
+
+    /// Internal OOXML handoff: callers must first prove the entire source package.
+    #[doc(hidden)]
+    pub fn install_plain_structural_proof(&mut self, source: Arc<PackageTemplate>) {
+        self.structural_template = self.xml_template.clone();
+        self.structural_source = Some(source);
+    }
+
+    fn structural_edit_succeeded(&mut self) {
+        let enabled = self.structural_passthrough_enabled();
+        // Never forget a move even if an invalid template is later restored.
+        self.source_rows_changed |= enabled;
+        if !enabled
+            || self.xml_template.is_none()
+            || self.xml_template != self.structural_template
+            || !self.is_plain_structural_content()
+        {
+            self.xml_template = None;
+        }
     }
 
     pub fn set_title(&mut self, new_title: &str) -> RpyxlResult<()> {
@@ -264,7 +323,7 @@ impl Worksheet {
                 }
             }
         }
-        self.xml_template = None;
+        self.structural_edit_succeeded();
         let old_cells = std::mem::take(&mut self.cells);
         for ((mut row, mut col), mut cell) in old_cells {
             let pos = if rows { row } else { col };
@@ -313,7 +372,7 @@ impl Worksheet {
         if rows == 0 && cols == 0 {
             return Ok(());
         }
-        self.xml_template = None;
+        self.structural_edit_succeeded();
         let old_cells = std::mem::take(&mut self.cells);
         let mut moved = Vec::new();
         for ((row, col), mut cell) in old_cells {

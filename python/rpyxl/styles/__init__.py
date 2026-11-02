@@ -74,7 +74,8 @@ class _StyleModel:
     def _style_token(self, ancestors=None):
         if type(self) not in _STYLE_TYPES:
             return None
-        untracked = self._style_revision is None
+        revision = self._style_revision
+        untracked = revision is None
         if untracked:
             state = vars(self)
             if state.keys() != _style_fields(type(self)).keys():
@@ -89,6 +90,11 @@ class _StyleModel:
             if self._style_opaque:
                 return None
             model_children = self._style_children
+        # Leaves cannot form a cycle. Setters clear the snapshot cache, so a
+        # cached leaf token is valid without allocating an ancestor set or tuple.
+        if not untracked and not model_children:
+            cached = self._style_cache
+            return cached[0] if cached is not None else (revision, ())
         if ancestors is None:
             ancestors = set()
         identity = id(self)
@@ -111,7 +117,8 @@ class _StyleModel:
                     _style_opaque=set(),
                     _style_cache=None,
                 )
-            return self._style_revision, tuple(children)
+                revision = 0
+            return revision, tuple(children)
         finally:
             ancestors.remove(identity)
 

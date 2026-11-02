@@ -8,7 +8,8 @@ use rpyxl_core::cell::{CellValue, RichStyle};
 use rpyxl_core::package::PackageTemplate;
 use rpyxl_core::workbook::Workbook;
 use rpyxl_ooxml::writer::{
-    save_workbook, save_workbook_generated, write_workbook, write_workbook_generated,
+    enable_plain_structural_edits, save_workbook, save_workbook_generated, write_workbook,
+    write_workbook_generated,
 };
 use rpyxl_ooxml::{Styles, XlsxPackage};
 use zip::write::SimpleFileOptions;
@@ -136,9 +137,13 @@ fn fixture(prefixed: bool) -> Vec<u8> {
 }
 
 fn load(bytes: Vec<u8>) -> Workbook {
+    load_with_data_only(bytes, false)
+}
+
+fn load_with_data_only(bytes: Vec<u8>, data_only: bool) -> Workbook {
     let archive: Arc<[u8]> = bytes.into();
     let mut package =
-        XlsxPackage::from_reader(Cursor::new(Arc::clone(&archive)), false, false).unwrap();
+        XlsxPackage::from_reader(Cursor::new(Arc::clone(&archive)), false, data_only).unwrap();
     let mut wb = package.to_workbook().unwrap();
     wb.package_template = Some(Arc::new(PackageTemplate {
         archive,
@@ -858,6 +863,669 @@ fn native_core_axis_edits_refuse_default_passthrough_without_touching_files() {
             wb.source_styles_xml.as_deref().unwrap()
         );
     }
+}
+
+fn plain_fixture() -> Vec<u8> {
+    let workbook = format!(
+        r#"<workbook xmlns="{NS}"><workbookPr/><bookViews><workbookView visibility="visible" minimized="0" showHorizontalScroll="1" showVerticalScroll="1" showSheetTabs="1" tabRatio="600" firstSheet="0" activeTab="0" autoFilterDateGrouping="1"/></bookViews><sheets><sheet xmlns:r="{REL}" name="Data" sheetId="1" state="visible" r:id="grid"/></sheets><definedNames/><calcPr calcId="124519" fullCalcOnLoad="1"/></workbook>"#
+    );
+    let worksheet = format!(
+        r#"<worksheet xmlns="{NS}"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/><pageSetUpPr/></sheetPr><dimension ref="A1:D8"/><sheetViews><sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView></sheetViews><sheetFormatPr baseColWidth="8" defaultRowHeight="15"/><sheetData><row r="1"><c r="A1" s="2" t="n"><v>12.5</v></c><c r="B1" s="1" t="n"><v>7</v></c><c r="C1" s="0" t="n"></c><c r="D1" t="n"><v>4</v></c></row><row r="4"><c r="A4" t="inlineStr"><is><t xml:space="preserve"> =日本語 &amp; café </t></is></c><c r="B4" t="b"><v>1</v></c></row><row r="8"/></sheetData><pageMargins left="0.75" right="0.75" top="1" bottom="1" header="0.5" footer="0.5"/></worksheet>"#
+    );
+    let bytes = replace_part(fixture(false), BOOK, &workbook);
+    let bytes = replace_part(bytes, SHEET, &worksheet);
+    replace_part(
+        bytes,
+        "custom/grids/_rels/data.xml.rels",
+        &format!(r#"<Relationships xmlns="{OPC}"/>"#),
+    )
+}
+
+fn apply_plain_edit(wb: &mut Workbook, operation: usize) {
+    let sheet = wb.get_sheet_mut("Data").unwrap();
+    match operation {
+        0 => sheet.insert_rows(1, 2).unwrap(),
+        1 => sheet.delete_rows(1, 1).unwrap(),
+        2 => sheet.insert_cols(1, 2).unwrap(),
+        3 => sheet.delete_cols(1, 1).unwrap(),
+        _ => sheet.move_range("A1:H8", 1, 1).unwrap(),
+    }
+}
+
+fn assert_native_cells_roundtrip(wb: &Workbook, saved: &[u8]) {
+    let loaded = load(saved.to_vec());
+    for (expected, actual) in wb.sheets().iter().zip(loaded.sheets()) {
+        assert_eq!(expected.cells().len(), actual.cells().len());
+        for (key, cell) in expected.cells() {
+            let actual = actual.cells().get(key).unwrap();
+            assert_eq!(cell.value, actual.value, "{key:?}");
+            assert_eq!(cell.source_xf_index(), actual.source_xf_index(), "{key:?}");
+            assert_eq!(
+                cell.source_xf_explicit, actual.source_xf_explicit,
+                "{key:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn entity_encoded_cell_attributes_match_source_values_styles_and_plain_proof() {
+    let original = plain_fixture();
+    let sheet = part(&original, SHEET);
+    let cases = [
+        ("coordinate", sheet.replace("r=\"A1\"", "r=\"A&#49;\"")),
+        ("style", sheet.replace("s=\"2\"", "s=\"&#50;\"")),
+        ("boolean_type", sheet.replace("t=\"b\"", "t=\"&#98;\"")),
+        (
+            "inline_type",
+            sheet.replace("t=\"inlineStr\"", "t=\"inline&#x53;tr\""),
+        ),
+        (
+            "string_type",
+            sheet.replace("<c r=\"D1\" t=\"n\">", "<c r=\"D1\" t=\"&#115;tr\">"),
+        ),
+        (
+            "empty_cell",
+            sheet.replace(
+                "<c r=\"C1\" s=\"0\" t=\"n\"></c>",
+                "<c r=\"C&#49;\" s=\"&#x32;\" t=\"&#110;\"/>",
+            ),
+        ),
+        (
+            "combined",
+            sheet
+                .replace("r=\"A1\"", "r=\"&#x41;&#49;\"")
+                .replace("s=\"2\"", "s=\"&#x32;\"")
+                .replace("s=\"1\"", "s=\"&#49;\"")
+                .replace("s=\"0\"", "s=\"&#48;\"")
+                .replace("t=\"n\"", "t=\"&#x6e;\"")
+                .replace("t=\"b\"", "t=\"&#x62;\"")
+                .replace("t=\"inlineStr\"", "t=\"&#105;nlineStr\"")
+                .replace("<row r=\"1\">", "<row r=\"&#49;\">")
+                .replace("<row r=\"4\">", "<row r=\"&#x34;\">")
+                .replace("<row r=\"8\"/>", "<row r=\"&#56;\"/>"),
+        ),
+    ];
+    let style_xml = part(&original, STYLE);
+    let source_styles = Styles::from_reader(style_xml.as_bytes()).unwrap();
+    for (case, xml) in cases {
+        // These expectations come from decoded source XML, not from a native
+        // workbook that could have already dropped a cell or misread its XF.
+        let source_cells = attributes(&xml, "c");
+        assert_eq!(source_cells.len(), 6);
+        let check_source = |wb: &Workbook, offset: u32| {
+            let sheet = wb.get_sheet("Data").unwrap();
+            assert_eq!(sheet.cell_count(), source_cells.len(), "{case}");
+            for source in &source_cells {
+                let reference = source["r"].as_str();
+                let (row, col) = rpyxl_core::coordinate::coordinate_to_tuple(reference).unwrap();
+                let expected = match reference {
+                    "A1" => CellValue::Float(12.5),
+                    "B1" => CellValue::Int(7),
+                    "C1" => CellValue::Empty,
+                    "D1" if source.get("t").map(String::as_str) == Some("str") => {
+                        CellValue::String("4".into())
+                    }
+                    "D1" => CellValue::Int(4),
+                    "A4" => CellValue::String(" =日本語 & café ".into()),
+                    "B4" => CellValue::Bool(true),
+                    _ => panic!("unexpected source reference {reference}"),
+                };
+                let cell = sheet
+                    .get_cell(row + offset, col + offset)
+                    .unwrap_or_else(|| panic!("missing source cell {reference} in {case}"));
+                let style = source.get("s").map_or(0, |id| id.parse::<usize>().unwrap());
+                assert_eq!(cell.value, expected, "{case}: {reference}");
+                assert_eq!(cell.source_xf_index(), Some(style), "{case}: {reference}");
+                assert_eq!(
+                    cell.source_xf_explicit,
+                    source.contains_key("s"),
+                    "{case}: {reference}"
+                );
+                assert_eq!(
+                    cell.rich_style,
+                    source_styles.rich_style(style),
+                    "{case}: {reference}"
+                );
+                assert_eq!(
+                    cell.number_format.as_deref(),
+                    source_styles
+                        .number_format(style)
+                        .filter(|code| !code.eq_ignore_ascii_case("General")),
+                    "{case}: {reference}"
+                );
+            }
+        };
+        let bytes = replace_part(original.clone(), SHEET, &xml);
+        for data_only in [false, true] {
+            let mut wb = load_with_data_only(bytes.clone(), data_only);
+            check_source(&wb, 0);
+            assert!(enable_plain_structural_edits(&mut wb).unwrap(), "{case}");
+            let unedited = save_bytes(&wb);
+            check_source(&load(unedited.clone()), 0);
+            assert_eq!(
+                attributes(&part(&unedited, SHEET), "row"),
+                attributes(&xml, "row")
+            );
+            wb.active_mut().move_range("A1:D4", 1, 1).unwrap();
+            check_source(&wb, 1);
+            assert!(wb.can_preserve_package());
+            assert!(enable_plain_structural_edits(&mut wb).unwrap());
+            let saved = save_bytes(&wb);
+            check_source(&load(saved.clone()), 1);
+            assert_eq!(part(&saved, STYLE), style_xml);
+            let mut reloaded = load(saved);
+            assert!(enable_plain_structural_edits(&mut reloaded).unwrap());
+            reloaded.active_mut().move_range("B2:E5", 1, 1).unwrap();
+            check_source(&load(save_bytes(&reloaded)), 2);
+        }
+    }
+}
+
+#[test]
+fn normal_parser_keeps_invalid_decoded_coordinate_and_style_fallbacks() {
+    let original = plain_fixture();
+    let sheet = part(&original, SHEET);
+    let mut bad_coordinate = load(replace_part(
+        original.clone(),
+        SHEET,
+        &sheet.replace("r=\"A1\"", "r=\"A&#48;\""),
+    ));
+    assert!(bad_coordinate.active().get_cell(1, 1).is_none());
+    assert_eq!(bad_coordinate.active().cell_count(), 5);
+    assert!(!enable_plain_structural_edits(&mut bad_coordinate).unwrap());
+
+    let mut bad_style = load(replace_part(
+        original,
+        SHEET,
+        &sheet.replace("s=\"2\"", "s=\"&#120;\""),
+    ));
+    let cell = bad_style.active().get_cell(1, 1).unwrap();
+    assert_eq!(cell.value, CellValue::Float(12.5));
+    assert_eq!(cell.source_xf_index(), Some(0));
+    assert!(cell.source_xf_explicit);
+    assert!(!enable_plain_structural_edits(&mut bad_style).unwrap());
+}
+
+#[test]
+fn plain_structural_optin_all_five_ops_repeat_save_without_ghosts_or_style_renumbering() {
+    for operation in 0..5 {
+        let original = plain_fixture();
+        let mut wb = load(original.clone());
+        assert!(wb
+            .sheets()
+            .iter()
+            .all(|sheet| !sheet.structural_passthrough_enabled() && !sheet.source_rows_changed()));
+        assert!(enable_plain_structural_edits(&mut wb).unwrap());
+        assert!(enable_plain_structural_edits(&mut wb).unwrap());
+        // Before a structural edit the original empty row still survives.
+        assert!(attributes(&part(&save_bytes(&wb), SHEET), "row")
+            .iter()
+            .any(|row| row["r"] == "8"));
+        for _ in 0..2 {
+            apply_plain_edit(&mut wb, operation);
+            assert!(wb.can_preserve_package());
+            assert!(enable_plain_structural_edits(&mut wb).unwrap());
+            let sheet = wb.get_sheet("Data").unwrap();
+            assert!(sheet.xml_template.is_some());
+            assert!(sheet.source_rows_changed());
+            let saved = save_bytes(&wb);
+            assert_eq!(saved, save_bytes(&wb));
+            assert_native_cells_roundtrip(&wb, &saved);
+            assert_eq!(part(&saved, STYLE), part(&original, STYLE));
+            let xml = part(&saved, SHEET);
+            let expected_rows = sheet
+                .cells()
+                .keys()
+                .map(|&(row, _)| row.to_string())
+                .collect::<std::collections::BTreeSet<_>>();
+            let actual_rows = attributes(&xml, "row")
+                .iter()
+                .map(|row| row["r"].clone())
+                .collect::<std::collections::BTreeSet<_>>();
+            assert_eq!(expected_rows, actual_rows, "operation {operation}");
+            assert_eq!(attributes(&xml, "row").len(), expected_rows.len());
+            let mut reloaded = load(saved);
+            assert!(enable_plain_structural_edits(&mut reloaded).unwrap());
+            assert_native_cells_roundtrip(&reloaded, &save_bytes(&reloaded));
+        }
+        let mut before = ZipArchive::new(Cursor::new(&original)).unwrap();
+        let saved = save_bytes(&wb);
+        let mut after = ZipArchive::new(Cursor::new(&saved)).unwrap();
+        for index in 0..before.len() {
+            let mut old = before.by_index_raw(index).unwrap();
+            if [SHEET, STYLE].contains(&old.name()) {
+                continue;
+            }
+            let mut new = after.by_index_raw(index).unwrap();
+            assert_eq!(old.name(), new.name());
+            assert_eq!(old.crc32(), new.crc32());
+            assert_eq!(old.compression(), new.compression());
+            assert_eq!(old.unix_mode(), new.unix_mode());
+            let mut a = Vec::new();
+            let mut b = Vec::new();
+            old.read_to_end(&mut a).unwrap();
+            new.read_to_end(&mut b).unwrap();
+            assert_eq!(a, b, "raw-copy {}", old.name());
+        }
+    }
+}
+
+#[test]
+fn plain_optin_noops_bounds_failures_and_same_path_saves_are_atomic() {
+    let original = plain_fixture();
+    let mut wb = load(original.clone());
+    assert!(enable_plain_structural_edits(&mut wb).unwrap());
+    let snapshot = wb.clone();
+    let sheet = wb.get_sheet_mut("Data").unwrap();
+    sheet.insert_rows(1, 0).unwrap();
+    sheet.delete_rows(1, 0).unwrap();
+    sheet.insert_cols(1, 0).unwrap();
+    sheet.delete_cols(1, 0).unwrap();
+    sheet.move_range("A1:D4", 0, 0).unwrap();
+    assert_eq!(wb, snapshot);
+    for operation in 0..5 {
+        let sheet = wb.get_sheet_mut("Data").unwrap();
+        let result = match operation {
+            0 => sheet.insert_rows(1, u32::MAX),
+            1 => sheet.delete_rows(0, 1),
+            2 => sheet.insert_cols(1, u32::MAX),
+            3 => sheet.delete_cols(0, 1),
+            _ => sheet.move_range("A1:D4", -1, 0),
+        };
+        assert!(result.is_err());
+        assert_eq!(wb, snapshot);
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("plain.xlsx");
+    for operation in 0..5 {
+        let mut wb = load(original.clone());
+        assert!(enable_plain_structural_edits(&mut wb).unwrap());
+        std::fs::write(&path, &original).unwrap();
+        for _ in 0..2 {
+            apply_plain_edit(&mut wb, operation);
+            save_workbook(&path, &wb).unwrap();
+            assert_native_cells_roundtrip(&wb, &std::fs::read(&path).unwrap());
+        }
+        assert_eq!(
+            wb.package_template.as_ref().unwrap().archive.as_ref(),
+            original.as_slice()
+        );
+    }
+}
+
+#[test]
+fn plain_optin_is_not_implicit_even_for_plain_sources() {
+    for operation in 0..5 {
+        let mut wb = load(plain_fixture());
+        apply_plain_edit(&mut wb, operation);
+        assert!(!wb.can_preserve_package());
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+        assert!(wb.active().xml_template.is_none());
+    }
+    assert!(!enable_plain_structural_edits(&mut Workbook::new()).unwrap());
+    let mut unsafe_book = load(fixture(false));
+    let snapshot = unsafe_book.clone();
+    assert!(!enable_plain_structural_edits(&mut unsafe_book).unwrap());
+    assert_eq!(snapshot, unsafe_book);
+}
+
+#[test]
+fn plain_optin_rejects_unknown_framing_reference_features_and_cell_payloads_atomically() {
+    let original = plain_fixture();
+    let sheet = part(&original, SHEET);
+    let changes = [
+        ("<sheetPr>", "<sheetPr codeName=\"Unknown\">"),
+        ("<worksheet ", "<worksheet xmlns:e=\"urn:foreign\" e:keep=\"yes\" "),
+        ("<sheetData>", "<sheetData xmlns=\"urn:foreign\">"),
+        ("<sheetData>", "<sheetData future=\"1\">"),
+        ("<row r=\"1\">", "<row r=\"1\" hidden=\"1\">"),
+        ("<row r=\"8\"/>", "<row r=\"8\" ht=\"30\" customHeight=\"1\"/>"),
+        ("<row r=\"8\"/>", "<row r=\"0\"/>"),
+        ("<row r=\"8\"/>", "<row r=\"4\"/>"),
+        ("<row r=\"8\"/>", "<row r=\"1048577\"/>"),
+        ("<v>12.5</v>", "<f>1+1</f><v>2</v>"),
+        ("<v>12.5</v>", "<f t=\"shared\" si=\"0\" ref=\"A1:A2\">1</f><v>1</v>"),
+        ("<v>12.5</v>", "<v>not-a-number</v>"),
+        ("<v>12.5</v>", "<v>12.5</v><!--lost-->"),
+        ("<v>12.5</v>", "<v>12.5</v><?unknown lost?>"),
+        ("<v>12.5</v>", "<v>12.5</v><extLst/>"),
+        ("<v>12.5</v>", "<v xmlns=\"urn:foreign\">12.5</v>"),
+        ("r=\"A1\"", "r=\"A2\""),
+        ("r=\"A1\"", "r=\"XFE1\""),
+        ("s=\"2\"", "s=\"99\""),
+        ("r=\"A1\"", "r=\"A1\" cm=\"1\""),
+        ("<is>", "<is><r><t>Rich</t></r>"),
+        ("<is>", "<is><rPh sb=\"0\" eb=\"1\"><t>Phonetic</t></rPh>"),
+        ("sqref=\"A1\"", "sqref=\"B2\""),
+        ("activeCell=\"A1\"", "activeCell=\"B2\""),
+        ("<selection ", "<selection pane=\"bottomRight\" "),
+        ("</sheetView>", "<pane state=\"frozen\" ySplit=\"1\"/></sheetView>"),
+        ("<sheetData>", "<cols><col min=\"1\" max=\"1\" width=\"20\"/></cols><sheetData>"),
+        ("</worksheet>", "<autoFilter ref=\"A1:D4\"/></worksheet>"),
+        ("</worksheet>", "<mergeCells><mergeCell ref=\"A1:B1\"/></mergeCells></worksheet>"),
+        ("</worksheet>", "<conditionalFormatting sqref=\"A1\"/></worksheet>"),
+        ("</worksheet>", "<dataValidations count=\"0\"/></worksheet>"),
+        ("</worksheet>", "<extLst/></worksheet>"),
+        ("</worksheet>", "<drawing xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" r:id=\"x\"/></worksheet>"),
+        ("ref=\"A1:D8\"", "ref=\"A1:D8\" unknown=\"1\""),
+        ("ref=\"A1:D8\"", "ref=\"A1:XFE8\""),
+    ];
+    for (old, new) in changes {
+        let bytes = replace_part(original.clone(), SHEET, &sheet.replace(old, new));
+        let mut wb = load(bytes);
+        let snapshot = wb.clone();
+        assert!(
+            !enable_plain_structural_edits(&mut wb).unwrap(),
+            "accepted {new}"
+        );
+        assert_eq!(wb, snapshot, "mutated on rejection {new}");
+        assert!(wb
+            .sheets()
+            .iter()
+            .all(|sheet| !sheet.structural_passthrough_enabled()));
+    }
+    let book = part(&original, BOOK);
+    for replacement in [
+        "<definedNames><definedName name=\"Ref\">Data!$A$1</definedName></definedNames>",
+        "<externalReferences/>",
+        "<pivotCaches/>",
+        "<extLst/>",
+        "<unknown xmlns=\"urn:foreign\"/>",
+    ] {
+        let mut wb = load(replace_part(
+            original.clone(),
+            BOOK,
+            &book.replace("<definedNames/>", replacement),
+        ));
+        let snapshot = wb.clone();
+        assert!(
+            !enable_plain_structural_edits(&mut wb).unwrap(),
+            "accepted {replacement}"
+        );
+        assert_eq!(wb, snapshot);
+    }
+    for kind in [
+        "chart",
+        "pivotTable",
+        "externalLink",
+        "calcChain",
+        "drawing",
+        "table",
+        "comments",
+        "sharedStrings",
+        "unknown",
+    ] {
+        let rels = part(&original, "custom/books/_rels/book.xml.rels");
+        let rels = rels.replace("</Relationships>", &format!(r#"<Relationship Id="unsafe" Type="{REL}/{kind}" Target="../opaque.xml"/></Relationships>"#));
+        let mut wb = load(replace_part(
+            original.clone(),
+            "custom/books/_rels/book.xml.rels",
+            &rels,
+        ));
+        assert!(
+            !enable_plain_structural_edits(&mut wb).unwrap(),
+            "accepted {kind}"
+        );
+    }
+    // A source formula remains disqualifying even if the live value was replaced
+    // (including a data-only load that hid its formula from the caller).
+    let formula = sheet.replace("<v>12.5</v>", "<f>1+1</f><v>2</v>");
+    for data_only in [false, true] {
+        let mut wb =
+            load_with_data_only(replace_part(original.clone(), SHEET, &formula), data_only);
+        wb.active_mut()
+            .set_cell_value(1, 1, CellValue::Int(2))
+            .unwrap();
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+    }
+}
+
+#[test]
+fn plain_optin_rejects_nonfinite_numbers_in_source_and_live_cells() {
+    for value in ["NaN", "inf", "-inf"] {
+        let original = plain_fixture();
+        let sheet = part(&original, SHEET).replace("<v>12.5</v>", &format!("<v>{value}</v>"));
+        let mut wb = load(replace_part(original, SHEET, &sheet));
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+        assert!(!wb.active().structural_passthrough_enabled());
+    }
+    let mut wb = load(plain_fixture());
+    assert!(enable_plain_structural_edits(&mut wb).unwrap());
+    wb.active_mut()
+        .set_cell_value(1, 1, CellValue::Float(f64::NAN))
+        .unwrap();
+    assert!(!wb.can_preserve_package());
+    assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+    let mut output = Cursor::new(b"existing stream".to_vec());
+    assert!(write_workbook(&mut output, &wb).is_err());
+    assert_eq!(output.into_inner(), b"existing stream");
+}
+
+#[test]
+fn plain_optin_live_content_and_stale_snapshots_fail_closed_before_writes() {
+    for mutation in 0..12 {
+        let original = plain_fixture();
+        let mut wb = load(original.clone());
+        assert!(enable_plain_structural_edits(&mut wb).unwrap());
+        apply_plain_edit(&mut wb, 0);
+        match mutation {
+            0 => wb
+                .active_mut()
+                .set_cell_comment(3, 1, Some("comment".into()))
+                .unwrap(),
+            1 => wb
+                .active_mut()
+                .set_cell_hyperlink(3, 1, Some("https://example.com".into()))
+                .unwrap(),
+            2 => {
+                wb.active_mut()
+                    .set_cell_value(3, 1, CellValue::formula("1+1"))
+                    .unwrap();
+            }
+            3 => wb.active_mut().merged_ranges.push((1, 1, 2, 2)),
+            4 => wb.active_mut().unsupported_cell_content = true,
+            5 => wb
+                .active_mut()
+                .xml_template
+                .as_mut()
+                .unwrap()
+                .before_data
+                .push_str("<cols/>"),
+            6 => wb.active_mut().xml_template = None,
+            7 => {
+                let source = Arc::make_mut(wb.package_template.as_mut().unwrap());
+                source.sheet_parts[0] = "wrong.xml".into();
+            }
+            8 => wb.source_styles_xml = Some("<styleSheet/>".into()),
+            9 => wb.active_mut().get_cell_mut(3, 1).unwrap().row = 99,
+            10 => wb.package_template = None,
+            _ => wb.source_styles_xml = None,
+        }
+        assert!(!wb.can_preserve_package(), "mutation {mutation}");
+        let snapshot = wb.clone();
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+        assert_eq!(snapshot, wb);
+        let mut output = Cursor::new(b"existing stream".to_vec());
+        assert!(write_workbook(&mut output, &wb).is_err());
+        assert_eq!(output.into_inner(), b"existing stream");
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("source.xlsx");
+        std::fs::write(&path, &original).unwrap();
+        assert!(save_workbook(&path, &wb).is_err());
+        assert_eq!(std::fs::read(&path).unwrap(), original);
+    }
+}
+
+#[test]
+fn plain_optin_rejects_native_annotations_and_bad_source_snapshots_without_changes() {
+    for mutation in 0..7 {
+        let mut wb = load(plain_fixture());
+        match mutation {
+            0 => wb
+                .active_mut()
+                .set_cell_comment(1, 1, Some("comment".into()))
+                .unwrap(),
+            1 => wb
+                .active_mut()
+                .set_cell_hyperlink(1, 1, Some("link".into()))
+                .unwrap(),
+            2 => {
+                wb.active_mut()
+                    .set_cell_value(1, 1, CellValue::formula("1+1"))
+                    .unwrap();
+            }
+            3 => wb.active_mut().unsupported_cell_content = true,
+            4 => wb
+                .active_mut()
+                .xml_template
+                .as_mut()
+                .unwrap()
+                .before_data
+                .push_str("<cols/>"),
+            5 => {
+                Arc::make_mut(wb.package_template.as_mut().unwrap()).styles_xml =
+                    "<styleSheet/>".into()
+            }
+            _ => {
+                Arc::make_mut(wb.package_template.as_mut().unwrap()).archive =
+                    Arc::from(&b"not a ZIP"[..])
+            }
+        }
+        let snapshot = wb.clone();
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+        assert_eq!(snapshot, wb);
+    }
+}
+
+#[test]
+fn plain_optin_empty_after_delete_and_restored_template_do_not_restore_source_rows() {
+    let mut wb = load(plain_fixture());
+    assert!(enable_plain_structural_edits(&mut wb).unwrap());
+    wb.active_mut().delete_rows(1, u32::MAX).unwrap();
+    assert!(wb.active().is_empty());
+    for operation in 0..5 {
+        apply_plain_edit(&mut wb, operation);
+        let saved = save_bytes(&wb);
+        assert!(attributes(&part(&saved, SHEET), "row").is_empty());
+        assert_native_cells_roundtrip(&wb, &saved);
+    }
+    let mut wb = load(plain_fixture());
+    assert!(enable_plain_structural_edits(&mut wb).unwrap());
+    let frame = wb.active().xml_template.clone();
+    wb.active_mut()
+        .set_cell_comment(1, 1, Some("temporary".into()))
+        .unwrap();
+    apply_plain_edit(&mut wb, 4);
+    assert!(wb.active().xml_template.is_none());
+    assert!(wb.active().source_rows_changed());
+    wb.active_mut().set_cell_comment(2, 2, None).unwrap();
+    wb.active_mut().xml_template = frame;
+    assert!(wb.can_preserve_package());
+    let saved = save_bytes(&wb);
+    let rows = attributes(&part(&saved, SHEET), "row");
+    assert_eq!(
+        rows.iter().map(|row| row["r"].as_str()).collect::<Vec<_>>(),
+        ["2", "5"]
+    );
+    assert_native_cells_roundtrip(&wb, &saved);
+}
+
+#[test]
+fn plain_optin_rejects_orphan_known_reference_parts_and_external_relationships() {
+    let original = plain_fixture();
+    let types = part(&original, "[Content_Types].xml");
+    for kind in [
+        "worksheet",
+        "calcChain",
+        "comments",
+        "externalLink",
+        "pivotTable",
+        "sharedStrings",
+    ] {
+        let types = types.replace("</Types>", &format!(r#"<Override PartName="/orphan.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.{kind}+xml"/></Types>"#));
+        let mut wb = load(replace_part(
+            original.clone(),
+            "[Content_Types].xml",
+            &types,
+        ));
+        assert!(
+            !enable_plain_structural_edits(&mut wb).unwrap(),
+            "accepted orphan {kind}"
+        );
+    }
+    let path = "custom/books/_rels/book.xml.rels";
+    for changed in [
+        part(&original, path).replace("Id=\"theme\"", "Id=\"theme\" TargetMode=\"External\""),
+        part(&original, path).replace(&format!("{REL}/theme"), "urn:foreign/theme"),
+        part(&original, path).replace("</Relationships>", &format!(r#"<Relationship Id="orphan" Type="{REL}/worksheet" Target="../grids/orphan.xml"/></Relationships>"#)),
+    ] {
+        let mut wb = load(replace_part(original.clone(), path, &changed));
+        assert!(!enable_plain_structural_edits(&mut wb).unwrap());
+    }
+}
+
+fn add_plain_second_sheet(bytes: Vec<u8>, unsafe_second: bool) -> Vec<u8> {
+    let book = part(&bytes, BOOK).replace(
+        "</sheets>",
+        &format!(r#"<sheet xmlns:r="{REL}" name="Other" sheetId="2" r:id="other"/></sheets>"#),
+    );
+    let bytes = replace_part(bytes, BOOK, &book);
+    let path = "custom/books/_rels/book.xml.rels";
+    let rels = part(&bytes, path).replace("</Relationships>", &format!(r#"<Relationship Id="other" Type="{REL}/worksheet" Target="../grids/other.xml"/></Relationships>"#));
+    let bytes = replace_part(bytes, path, &rels);
+    let mut sheet = part(&bytes, SHEET);
+    if unsafe_second {
+        sheet = sheet.replace("<v>12.5</v>", "<f>Data!A1</f><v>12.5</v>");
+    }
+    let mut archive = ZipArchive::new(Cursor::new(bytes)).unwrap();
+    let mut output = ZipWriter::new(Cursor::new(Vec::new()));
+    for index in 0..archive.len() {
+        output
+            .raw_copy_file(archive.by_index_raw(index).unwrap())
+            .unwrap();
+    }
+    output
+        .start_file("custom/grids/other.xml", SimpleFileOptions::default())
+        .unwrap();
+    output.write_all(sheet.as_bytes()).unwrap();
+    output.finish().unwrap().into_inner()
+}
+
+#[test]
+fn plain_optin_is_workbook_atomic_and_keeps_unedited_sheet_row_frames() {
+    let mut unsafe_book = load(add_plain_second_sheet(plain_fixture(), true));
+    // The first sheet and all live cells pass; only the second source sheet
+    // fails, so a proof must not have been partially installed on the first.
+    unsafe_book
+        .get_sheet_mut("Other")
+        .unwrap()
+        .set_cell_value(1, 1, CellValue::Float(12.5))
+        .unwrap();
+    let snapshot = unsafe_book.clone();
+    assert!(!enable_plain_structural_edits(&mut unsafe_book).unwrap());
+    assert_eq!(unsafe_book, snapshot);
+    assert!(unsafe_book
+        .sheets()
+        .iter()
+        .all(|sheet| !sheet.structural_passthrough_enabled()));
+    let mut wb = load(add_plain_second_sheet(plain_fixture(), false));
+    assert!(enable_plain_structural_edits(&mut wb).unwrap());
+    apply_plain_edit(&mut wb, 4);
+    let saved = save_bytes(&wb);
+    assert!(!attributes(&part(&saved, SHEET), "row")
+        .iter()
+        .any(|row| row["r"] == "8"));
+    assert!(attributes(&part(&saved, "custom/grids/other.xml"), "row")
+        .iter()
+        .any(|row| row["r"] == "8"));
+    assert!(!wb.get_sheet("Other").unwrap().source_rows_changed());
+    wb.get_sheet_mut("Other")
+        .unwrap()
+        .set_cell_value(1, 1, CellValue::formula("Data!A1"))
+        .unwrap();
+    assert!(!wb.can_preserve_package());
+    assert!(!enable_plain_structural_edits(&mut wb).unwrap());
 }
 
 #[test]

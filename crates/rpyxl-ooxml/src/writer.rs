@@ -70,7 +70,13 @@ fn validate_cell_content(wb: &Workbook) -> RpyxlResult<()> {
 
 pub fn write_workbook<W: Write + Seek>(writer: W, wb: &Workbook) -> RpyxlResult<()> {
     validate_cell_content(wb)?;
-    if wb.package_template.is_some() && !wb.can_preserve_package() {
+    if (wb.package_template.is_some()
+        || wb
+            .sheets()
+            .iter()
+            .any(|sheet| sheet.structural_passthrough_enabled() || sheet.source_rows_changed()))
+        && !wb.can_preserve_package()
+    {
         return Err(template_error(
             "workbook structure or worksheet templates changed; use save_workbook_generated / write_workbook_generated explicitly",
         ));
@@ -388,6 +394,596 @@ fn validate_package_bindings<R: Read + Seek>(
     Ok(())
 }
 
+/// Opt in atomically only when every live sheet and its immutable source are
+/// proven free of reference-bearing structures. A failed proof is a normal
+/// `false` result and never invalidates or discards source content.
+pub fn enable_plain_structural_edits(wb: &mut Workbook) -> RpyxlResult<bool> {
+    if !wb.can_preserve_package() {
+        return Ok(false);
+    }
+    if wb
+        .sheets()
+        .iter()
+        .all(Worksheet::structural_passthrough_enabled)
+    {
+        // can_preserve_package already checked live content and the cached
+        // source/template identities; do not repeat the per-cell proof scan.
+        return Ok(true);
+    }
+    if !wb
+        .sheets()
+        .iter()
+        .all(Worksheet::is_plain_structural_content)
+    {
+        return Ok(false);
+    }
+    let source = Arc::clone(
+        wb.package_template
+            .as_ref()
+            .expect("checked source package"),
+    );
+    let proof = || -> RpyxlResult<()> {
+        if wb.source_styles_xml.as_deref() != Some(source.styles_xml.as_str()) {
+            return Err(template_error("source style snapshot changed"));
+        }
+        let mut archive =
+            ZipArchive::new(Cursor::new(source.archive.as_ref())).map_err(template_error)?;
+        validate_package_bindings(&mut archive, &source)?;
+        validate_plain_package(&mut archive, &source)?;
+        let styles = StyleTables::for_workbook(wb)?;
+        let native = styles
+            .native
+            .as_ref()
+            .ok_or_else(|| template_error("missing native style base"))?;
+        for (sheet, part) in wb.sheets().iter().zip(&source.sheet_parts) {
+            source_sheet_rows(
+                &read_package_part(&mut archive, part)?,
+                sheet,
+                native.source_xf_count,
+                native.source_dxf_count,
+                true,
+            )?;
+        }
+        Ok(())
+    };
+    if proof().is_err() {
+        return Ok(false);
+    }
+    for sheet in wb.sheets_mut() {
+        sheet.install_plain_structural_proof(Arc::clone(&source));
+    }
+    Ok(true)
+}
+
+// Namespace declarations are not expanded attributes, so check their spelling
+// and bindings too. Unknown markup must never acquire meaning after a move.
+fn plain_node(node: &XmlElement, name: &str, attributes: &[&str]) -> RpyxlResult<()> {
+    if !node.is_main(name)
+        || node.name != name
+        || node.has_text()
+        || node.attributes.iter().any(|(key, value)| {
+            if key == "xmlns" {
+                value.as_bytes() != SPREADSHEET_NS
+            } else if key == "xmlns:r" {
+                value != "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
+            } else {
+                !attributes.contains(&key.as_str())
+            }
+        })
+    {
+        return Err(template_error(format!("non-plain {name}")));
+    }
+    Ok(())
+}
+
+fn plain_children(node: &XmlElement, allowed: &[&str]) -> RpyxlResult<()> {
+    let mut next = 0;
+    for child in &node.children {
+        let position = allowed
+            .iter()
+            .position(|name| *name == child.name)
+            .ok_or_else(|| template_error("unknown plain framing element"))?;
+        if position < next {
+            return Err(template_error(
+                "duplicate or out-of-order plain framing element",
+            ));
+        }
+        next = position + 1;
+    }
+    Ok(())
+}
+
+fn validate_plain_workbook(root: &XmlElement) -> RpyxlResult<()> {
+    plain_node(root, "workbook", &[])?;
+    plain_children(
+        root,
+        &[
+            "workbookPr",
+            "bookViews",
+            "sheets",
+            "definedNames",
+            "calcPr",
+        ],
+    )?;
+    for node in &root.children {
+        match node.name.as_str() {
+            "workbookPr" => plain_node(node, "workbookPr", &["date1904"])?,
+            "bookViews" => {
+                plain_node(node, "bookViews", &[])?;
+                plain_children(node, &["workbookView"])?;
+                for view in &node.children {
+                    plain_node(
+                        view,
+                        "workbookView",
+                        &[
+                            "visibility",
+                            "minimized",
+                            "showHorizontalScroll",
+                            "showVerticalScroll",
+                            "showSheetTabs",
+                            "xWindow",
+                            "yWindow",
+                            "windowWidth",
+                            "windowHeight",
+                            "tabRatio",
+                            "firstSheet",
+                            "activeTab",
+                            "autoFilterDateGrouping",
+                        ],
+                    )?;
+                    plain_children(view, &[])?;
+                }
+                continue;
+            }
+            "sheets" => {
+                plain_node(node, "sheets", &[])?;
+                for sheet in &node.children {
+                    plain_node(sheet, "sheet", &["name", "sheetId", "r:id", "state"])?;
+                    plain_children(sheet, &[])?;
+                }
+                continue;
+            }
+            // Openpyxl emits an empty definedNames container by default.
+            "definedNames" => plain_node(node, "definedNames", &[])?,
+            "calcPr" => plain_node(node, "calcPr", &["calcId", "fullCalcOnLoad"])?,
+            _ => return Err(template_error("non-plain workbook")),
+        }
+        plain_children(node, &[])?;
+    }
+    Ok(())
+}
+
+fn validate_plain_package<R: Read + Seek>(
+    archive: &mut ZipArchive<R>,
+    source: &PackageTemplate,
+) -> RpyxlResult<()> {
+    let book = read_package_part(archive, &source.workbook_path)?;
+    reject_plain_misc(&book)?;
+    validate_plain_workbook(&parse_xml(&book)?)?;
+    // Do not overlook known reference-bearing parts merely because they are
+    // orphaned in the relationship graph. Unknown opaque part types are copied.
+    let types_xml = read_package_part(archive, "[Content_Types].xml")?;
+    reject_plain_misc(&types_xml)?;
+    let types = parse_xml(&types_xml)?;
+    let types_ns = "http://schemas.openxmlformats.org/package/2006/content-types";
+    if types.name != "Types"
+        || types.namespace != types_ns
+        || types.has_text()
+        || types
+            .attributes
+            .iter()
+            .any(|(key, value)| key != "xmlns" || value != types_ns)
+    {
+        return Err(template_error("non-plain content types"));
+    }
+    for part in &types.children {
+        if part.namespace != types_ns
+            || !matches!(part.name.as_str(), "Override" | "Default")
+            || part.has_text()
+            || !part.children.is_empty()
+            || part.attributes.keys().any(|key| {
+                key != "ContentType"
+                    && key
+                        != if part.name == "Override" {
+                            "PartName"
+                        } else {
+                            "Extension"
+                        }
+            })
+        {
+            return Err(template_error("non-plain content type record"));
+        }
+        let kind = part
+            .attributes
+            .get("ContentType")
+            .ok_or_else(|| template_error("missing content type"))?;
+        let spreadsheet = "application/vnd.openxmlformats-officedocument.spreadsheetml.";
+        if let Some(local) = kind.strip_prefix(spreadsheet) {
+            let path = part
+                .attributes
+                .get("PartName")
+                .ok_or_else(|| template_error("unbound spreadsheet content type"))?;
+            let path = resolve_part("", path)?;
+            let allowed = match local {
+                "sheet.main+xml" => path == source.workbook_path,
+                "styles+xml" => path == source.styles_path,
+                "worksheet+xml" => source.sheet_parts.contains(&path),
+                _ => false,
+            };
+            if !allowed {
+                return Err(template_error(
+                    "reference-bearing or unbound spreadsheet part",
+                ));
+            }
+        } else if kind.starts_with("application/vnd.ms-excel")
+            || kind.contains("drawingml.chart")
+            || kind.contains("vmlDrawing")
+        {
+            return Err(template_error("non-plain spreadsheet/drawing part"));
+        }
+    }
+    let (parent, filename) = source
+        .workbook_path
+        .rsplit_once('/')
+        .unwrap_or(("", &source.workbook_path));
+    let workbook_rels = if parent.is_empty() {
+        format!("_rels/{filename}.rels")
+    } else {
+        format!("{parent}/_rels/{filename}.rels")
+    };
+    // Inspect every relationship part, including relationships of otherwise
+    // opaque parts. Unreferenced opaque payloads remain raw-copy passthrough.
+    let paths = archive
+        .file_names()
+        .filter(|path| path.ends_with(".rels"))
+        .map(str::to_owned)
+        .collect::<Vec<_>>();
+    for path in paths {
+        let xml = read_package_part(archive, &path)?;
+        reject_plain_misc(&xml)?;
+        let root = parse_xml(&xml)?;
+        if root.name != "Relationships"
+            || root.namespace != "http://schemas.openxmlformats.org/package/2006/relationships"
+            || root.has_text()
+            || root.attributes.iter().any(|(key, value)| {
+                key != "xmlns"
+                    || value != "http://schemas.openxmlformats.org/package/2006/relationships"
+            })
+        {
+            return Err(template_error("non-plain relationships"));
+        }
+        let mut ids = HashSet::new();
+        for rel in &root.children {
+            if rel.name != "Relationship"
+                || rel.namespace != root.namespace
+                || rel.has_text()
+                || !rel.children.is_empty()
+                || rel
+                    .attributes
+                    .keys()
+                    .any(|key| !["Id", "Type", "Target"].contains(&key.as_str()))
+            {
+                return Err(template_error("non-plain relationship"));
+            }
+            let kind = rel
+                .attributes
+                .get("Type")
+                .ok_or_else(|| template_error("missing relationship type"))?;
+            let prefix = "http://schemas.openxmlformats.org/officeDocument/2006/relationships/";
+            let local = kind.strip_prefix(prefix);
+            let allowed = if path == "_rels/.rels" {
+                matches!(local, Some("officeDocument" | "extended-properties" | "custom-properties"))
+                    || kind == "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties"
+            } else if path == workbook_rels {
+                matches!(local, Some("worksheet" | "styles" | "theme"))
+            } else {
+                false
+            };
+            if !allowed {
+                return Err(template_error("reference-bearing or unknown relationship"));
+            }
+            let id = rel
+                .attributes
+                .get("Id")
+                .ok_or_else(|| template_error("missing relationship Id"))?;
+            let target = rel
+                .attributes
+                .get("Target")
+                .ok_or_else(|| template_error("missing relationship target"))?;
+            if !ids.insert(id) {
+                return Err(template_error("duplicate relationship Id"));
+            }
+            let target = resolve_part(
+                if path == "_rels/.rels" {
+                    ""
+                } else {
+                    &source.workbook_path
+                },
+                target,
+            )?;
+            if (local == Some("worksheet") && !source.sheet_parts.contains(&target))
+                || (local == Some("styles") && target != source.styles_path)
+                || (local == Some("officeDocument") && target != source.workbook_path)
+            {
+                return Err(template_error("unbound plain package part"));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn reject_plain_misc(xml: &str) -> RpyxlResult<()> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    loop {
+        match reader.read_event().map_err(template_error)? {
+            Event::Comment(_) | Event::PI(_) | Event::DocType(_) | Event::CData(_) => {
+                return Err(template_error("unknown plain XML payload"))
+            }
+            Event::Eof => return Ok(()),
+            _ => {}
+        }
+    }
+}
+
+fn validate_plain_sheet_frame(root: &XmlElement) -> RpyxlResult<()> {
+    plain_node(root, "worksheet", &[])?;
+    plain_children(
+        root,
+        &[
+            "sheetPr",
+            "dimension",
+            "sheetViews",
+            "sheetFormatPr",
+            "sheetData",
+            "pageMargins",
+        ],
+    )?;
+    for node in &root.children {
+        match node.name.as_str() {
+            "sheetPr" => {
+                plain_node(node, "sheetPr", &[])?;
+                plain_children(node, &["outlinePr", "pageSetUpPr"])?;
+                for child in &node.children {
+                    let attrs: &[&str] = match child.name.as_str() {
+                        "outlinePr" => &[
+                            "applyStyles",
+                            "summaryBelow",
+                            "summaryRight",
+                            "showOutlineSymbols",
+                        ],
+                        "pageSetUpPr" => &["autoPageBreaks", "fitToPage"],
+                        _ => return Err(template_error("non-plain sheet properties")),
+                    };
+                    plain_node(child, &child.name, attrs)?;
+                    plain_children(child, &[])?;
+                }
+                continue;
+            }
+            "dimension" => {
+                plain_node(node, "dimension", &["ref"])?;
+                let reference = node
+                    .attributes
+                    .get("ref")
+                    .ok_or_else(|| template_error("missing dimension reference"))?;
+                for coord in reference.split(':') {
+                    let (row, col) = rpyxl_core::coordinate::coordinate_to_tuple(coord)?;
+                    if tuple_to_coordinate(row, col)? != coord {
+                        return Err(template_error("non-canonical dimension reference"));
+                    }
+                }
+                if reference.split(':').count() > 2 {
+                    return Err(template_error("invalid dimension reference"));
+                }
+            }
+            "sheetViews" => {
+                plain_node(node, "sheetViews", &[])?;
+                plain_children(node, &["sheetView"])?;
+                for view in &node.children {
+                    plain_node(view, "sheetView", &["workbookViewId"])?;
+                    if view.attributes.get("workbookViewId").map(String::as_str) != Some("0") {
+                        return Err(template_error("non-default worksheet view"));
+                    }
+                    plain_children(view, &["selection"])?;
+                    for selection in &view.children {
+                        plain_node(selection, "selection", &["activeCell", "sqref"])?;
+                        if selection.attributes.iter().any(|(key, value)| {
+                            ["activeCell", "sqref"].contains(&key.as_str()) && value != "A1"
+                        }) {
+                            return Err(template_error("non-default worksheet selection"));
+                        }
+                        plain_children(selection, &[])?;
+                    }
+                }
+                continue;
+            }
+            "sheetFormatPr" => {
+                plain_node(node, "sheetFormatPr", &["baseColWidth", "defaultRowHeight"])?
+            }
+            "sheetData" => plain_node(node, "sheetData", &[])?,
+            "pageMargins" => plain_node(
+                node,
+                "pageMargins",
+                &["left", "right", "top", "bottom", "header", "footer"],
+            )?,
+            _ => return Err(template_error("non-plain worksheet framing")),
+        }
+        plain_children(node, &[])?;
+    }
+    Ok(())
+}
+
+fn plain_cell(xml: &str, row: u32, previous_col: &mut u32, style_count: usize) -> RpyxlResult<()> {
+    let wrapped = format!(
+        "<wrapper xmlns=\"{}\">{xml}</wrapper>",
+        String::from_utf8_lossy(SPREADSHEET_NS)
+    );
+    let root = parse_xml_with_limits(&wrapped, 5, 5)?;
+    let cell = root
+        .children
+        .first()
+        .ok_or_else(|| template_error("missing plain cell"))?;
+    plain_node(cell, "c", &["r", "s", "t"])?;
+    // No namespace declarations are needed inside plain data.
+    if cell
+        .attributes
+        .keys()
+        .any(|key| !["r", "s", "t"].contains(&key.as_str()))
+    {
+        return Err(template_error("non-plain cell attributes"));
+    }
+    let reference = cell
+        .attributes
+        .get("r")
+        .ok_or_else(|| template_error("missing cell reference"))?;
+    let (r, col) = rpyxl_core::coordinate::coordinate_to_tuple(reference)?;
+    if r != row
+        || col <= *previous_col
+        || tuple_to_coordinate(r, col)? != *reference
+        || cell.index("s", 0)? >= style_count
+    {
+        return Err(template_error("invalid plain cell reference/style"));
+    }
+    *previous_col = col;
+    let kind = cell.attributes.get("t").map_or("n", String::as_str);
+    if !matches!(kind, "n" | "b" | "str" | "inlineStr") {
+        return Err(template_error("unsupported plain cell type"));
+    }
+    plain_children(cell, if kind == "inlineStr" { &["is"] } else { &["v"] })?;
+    if let Some(value) = cell.children.first() {
+        if kind == "inlineStr" {
+            plain_node(value, "is", &[])?;
+            plain_children(value, &["t"])?;
+            if let Some(text) = value.children.first() {
+                if !text.is_main("t")
+                    || text.name != "t"
+                    || !text.children.is_empty()
+                    || text.attributes.iter().any(|(key, value)| {
+                        key != "xml:space" || !["preserve", "default"].contains(&value.as_str())
+                    })
+                {
+                    return Err(template_error("non-plain inline text"));
+                }
+            }
+        } else {
+            if !value.is_main("v")
+                || value.name != "v"
+                || !value.attributes.is_empty()
+                || !value.children.is_empty()
+            {
+                return Err(template_error("non-plain scalar value"));
+            }
+            let text = value
+                .text
+                .iter()
+                .map(|(_, text)| text.as_str())
+                .collect::<String>();
+            let text = text.trim();
+            if (kind == "b" && !["0", "1"].contains(&text))
+                || (kind == "n"
+                    && !text.is_empty()
+                    && !text.parse::<f64>().is_ok_and(f64::is_finite))
+            {
+                return Err(template_error("invalid plain scalar value"));
+            }
+        }
+    }
+    Ok(())
+}
+
+// Streaming framing with a bounded per-cell DOM: never build a worksheet DOM.
+fn validate_plain_sheet_data(xml: &str, style_count: usize) -> RpyxlResult<()> {
+    let mut reader = quick_xml::Reader::from_str(xml);
+    let mut depth: usize = 0;
+    let mut in_data = false;
+    let mut row = 0;
+    let mut column = 0;
+    let mut cell_start = None;
+    loop {
+        let start = reader.buffer_position() as usize;
+        let event = reader.read_event().map_err(template_error)?;
+        match &event {
+            Event::Start(element) | Event::Empty(element) => {
+                let empty = matches!(event, Event::Empty(_));
+                let name = element.name();
+                if depth == 1 && name.as_ref() == b"sheetData" {
+                    in_data = !empty;
+                } else if in_data {
+                    match (depth, name.as_ref()) {
+                        (2, b"row") => {
+                            let attrs = element
+                                .attributes()
+                                .collect::<Result<Vec<_>, _>>()
+                                .map_err(template_error)?;
+                            if attrs.len() != 1 || attrs[0].key.as_ref() != b"r" {
+                                return Err(template_error("non-plain row attributes"));
+                            }
+                            let next = attrs[0]
+                                .decode_and_unescape_value(reader.decoder())
+                                .map_err(template_error)?
+                                .parse::<u32>()
+                                .map_err(template_error)?;
+                            if next <= row || next > rpyxl_core::coordinate::MAX_ROW {
+                                return Err(template_error("invalid plain row index"));
+                            }
+                            row = next;
+                            column = 0;
+                        }
+                        (3, b"c") => {
+                            if empty {
+                                plain_cell(
+                                    &xml[start..reader.buffer_position() as usize],
+                                    row,
+                                    &mut column,
+                                    style_count,
+                                )?;
+                            } else {
+                                cell_start = Some(start);
+                            }
+                        }
+                        (4, b"v" | b"is") | (5, b"t") => {}
+                        _ => return Err(template_error("unknown plain worksheet data")),
+                    }
+                }
+                if !empty {
+                    depth += 1;
+                }
+            }
+            Event::End(element) => {
+                if in_data && depth == 4 && element.name().as_ref() == b"c" {
+                    let start = cell_start
+                        .take()
+                        .ok_or_else(|| template_error("invalid plain cell framing"))?;
+                    plain_cell(
+                        &xml[start..reader.buffer_position() as usize],
+                        row,
+                        &mut column,
+                        style_count,
+                    )?;
+                }
+                if in_data && depth == 2 {
+                    in_data = false;
+                }
+                depth = depth
+                    .checked_sub(1)
+                    .ok_or_else(|| template_error("invalid plain sheet framing"))?;
+            }
+            Event::Text(text) => {
+                let text = text.unescape().map_err(template_error)?;
+                if !text.chars().all(is_xml_character)
+                    || (cell_start.is_none() && !text.trim().is_empty())
+                {
+                    return Err(template_error("unknown plain worksheet text"));
+                }
+            }
+            Event::Comment(_) | Event::PI(_) | Event::DocType(_) | Event::CData(_) => {
+                return Err(template_error("unknown plain worksheet payload"))
+            }
+            Event::Eof => return Ok(()),
+            _ => {}
+        }
+    }
+}
+
 struct RowFrame {
     start: String,
     end: String,
@@ -398,7 +994,15 @@ fn source_sheet_rows(
     ws: &Worksheet,
     style_count: usize,
     dxf_count: usize,
+    prove_plain: bool,
 ) -> RpyxlResult<BTreeMap<u32, RowFrame>> {
+    let plain = prove_plain || ws.structural_passthrough_enabled();
+    // The cached proof pins the immutable archive and exact framing. Saving
+    // rechecks those identities before reaching here, so cell payloads need
+    // proving only once, not reparsing into per-cell DOMs on every save.
+    if prove_plain {
+        validate_plain_sheet_data(xml, style_count)?;
+    }
     let template = ws
         .xml_template
         .as_ref()
@@ -408,6 +1012,11 @@ fn source_sheet_rows(
         template.root_start, template.before_data, template.data_start, "", template.after_data
     );
     let frame = parse_xml(&framed)?;
+    if plain && frame.children.iter().any(|node| node.is_main("dimension")) {
+        return Err(template_error(
+            "plain framing must not contain a source dimension",
+        ));
+    }
     if !frame.is_main("worksheet") || frame.name != "worksheet" {
         return Err(template_error("unsafe worksheet root"));
     }
@@ -488,17 +1097,24 @@ fn source_sheet_rows(
                         let row = row
                             .filter(|row| *row > 0)
                             .ok_or_else(|| template_error("source row has no valid row index"))?;
-                        let mut writer = quick_xml::Writer::new(Vec::new());
-                        writer
-                            .write_event(Event::Start(element.borrow()))
-                            .map_err(write_error)?;
-                        let frame = RowFrame {
-                            start: String::from_utf8(writer.into_inner())
-                                .map_err(template_error)?,
-                            end: format!("</{}>", String::from_utf8_lossy(element.name().as_ref())),
-                        };
-                        if rows.insert(row, frame).is_some() {
-                            return Err(template_error("duplicate source row index"));
+                        // Proven edits discard source row framing entirely. Do not
+                        // allocate an original row map only to throw it away.
+                        if !prove_plain && !ws.source_rows_changed() {
+                            let mut writer = quick_xml::Writer::new(Vec::new());
+                            writer
+                                .write_event(Event::Start(element.borrow()))
+                                .map_err(write_error)?;
+                            let frame = RowFrame {
+                                start: String::from_utf8(writer.into_inner())
+                                    .map_err(template_error)?,
+                                end: format!(
+                                    "</{}>",
+                                    String::from_utf8_lossy(element.name().as_ref())
+                                ),
+                            };
+                            if rows.insert(row, frame).is_some() {
+                                return Err(template_error("duplicate source row index"));
+                            }
                         }
                     }
                 } else {
@@ -530,6 +1146,10 @@ fn source_sheet_rows(
     }
     let original = parse_xml(&String::from_utf8(metadata.into_inner()).map_err(template_error)?)?;
     validate_sheet_style_references(&original, style_count, dxf_count)?;
+    if plain {
+        validate_plain_sheet_frame(&original)?;
+        validate_plain_sheet_frame(&frame)?;
+    }
     let metadata_keys = |root: &XmlElement| {
         root.children
             .iter()
@@ -653,6 +1273,13 @@ fn write_preserved_package<W: Write + Seek>(
     let mut archive =
         ZipArchive::new(Cursor::new(source.archive.as_ref())).map_err(template_error)?;
     validate_package_bindings(&mut archive, source)?;
+    if wb
+        .sheets()
+        .iter()
+        .any(Worksheet::structural_passthrough_enabled)
+    {
+        validate_plain_package(&mut archive, source)?;
+    }
     let mut replacements = HashMap::new();
     replacements.insert(source.styles_path.as_str(), styles.to_xml());
     for (sheet, part) in wb.sheets().iter().zip(&source.sheet_parts) {
@@ -666,6 +1293,7 @@ fn write_preserved_package<W: Write + Seek>(
             sheet,
             native.source_xf_count,
             native.source_dxf_count,
+            false,
         )?;
         replacements.insert(
             part.as_str(),

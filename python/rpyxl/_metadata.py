@@ -239,31 +239,76 @@ def _worksheet_metadata_xml(data):
 
 
 def dump(root):
-    # ElementTree rewrites extension prefixes. Keep mc:Ignorable consistent
-    # with the namespace declarations actually emitted, not stale input names.
-    root = deepcopy(root)
-    ignorable = q(
-        "Ignorable", "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    """Serialize once, repairing Ignorable without copying the cell-value DOM."""
+    mc = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+    ignorable = q("Ignorable", mc)
+    missing = object()
+    saved = []
+    try:
+        for node in root.iter():
+            # get() does not materialize empty attribute dictionaries on cells'
+            # value/text nodes. Only stale Ignorable attributes need a copy.
+            if node.get(ignorable, missing) is not missing:
+                saved.append((node, node.attrib))
+                node.attrib = {
+                    key: value for key, value in node.attrib.items() if key != ignorable
+                }
+        data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    finally:
+        # Restore the original dictionaries, including identity and key order;
+        # aliases held by metadata models must not lose their stale attributes.
+        for node, attributes in saved:
+            node.attrib = attributes
+
+    # ElementTree puts generated namespace declarations on the root. Inspect
+    # only its opening tag (not comments/text), using the actual emitted names:
+    # predicting nsN prefixes from the global registry would race registrations
+    # and miss namespaces used only by QName attribute values or text.
+    end = data.index(b">", data.index(b"?>") + 2)
+    namespaces = dict(re.findall(rb'\sxmlns(?::([^=\s]+))?="([^"]*)"', data[:end]))
+    extensions = [
+        prefix
+        for prefix, uri in namespaces.items()
+        if any(
+            pattern in uri
+            for pattern in (
+                b"/office/spreadsheetml/",
+                b"/office/drawing/",
+                b"/office/excel/",
+            )
+        )
+    ]
+    if not extensions:
+        return data
+
+    declarations = []
+
+    def declare(prefix, uri):
+        candidate = prefix
+        index = 0
+        while candidate in namespaces:
+            index += 1
+            candidate = prefix + str(index).encode("ascii")
+        namespaces[candidate] = uri
+        declarations.append(b" xmlns:" + candidate + b'="' + uri + b'"')
+        return candidate
+
+    # Ignorable takes prefixes, so give a default extension namespace an alias.
+    if b"" in extensions:
+        extensions[extensions.index(b"")] = declare(b"ext", namespaces[b""])
+    mc_uri = mc.encode("ascii")
+    mc_prefix = next(
+        (prefix for prefix, uri in namespaces.items() if prefix and uri == mc_uri), None
     )
-    for node in root.iter():
-        node.attrib.pop(ignorable, None)
-    # Include mc during both serializations so auto-generated nsN prefixes do
-    # not shift when the final Ignorable attribute is added.
-    root.set(ignorable, "")
-    data = ET.tostring(root, encoding="utf-8", xml_declaration=True)
-    extensions = []
-    for prefix, uri in re.findall(rb'xmlns:([^= ]+)="([^"]+)"', data):
-        if (
-            b"/office/spreadsheetml/" in uri
-            or b"/office/drawing/" in uri
-            or b"/office/excel/" in uri
-        ):
-            extensions.append(prefix.decode("ascii"))
-    if extensions:
-        root.set(ignorable, " ".join(extensions))
-    else:
-        root.attrib.pop(ignorable)
-    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
+    if mc_prefix is None:
+        mc_prefix = declare(b"mc", mc_uri)
+    addition = b"".join(declarations) + (
+        b" " + mc_prefix + b':Ignorable="' + b" ".join(extensions) + b'"'
+    )
+    offset = end - 1 if data[end - 1 : end] == b"/" else end
+    # Views avoid allocating another full payload just to slice off its header.
+    view = memoryview(data)
+    return b"".join((view[:offset], addition, view[offset:]))
 
 
 def scalar(value):

@@ -10,6 +10,7 @@ from ._style_pool import FrozenStyle, unwrap_style
 from .styles import STYLE_INTERNAL_FIELDS, _StyleModel
 
 _STYLE_FIELDS = ("font", "fill", "border", "alignment", "protection")
+_NATIVE_CELL_FIELDS = frozenset((*_STYLE_FIELDS, "style_dirty", "hyperlink", "comment"))
 
 
 @lru_cache(maxsize=64)
@@ -139,7 +140,7 @@ def compile_style_records(metadata_book):
 def _has_extra_attributes(model):
     # Even empty loaded snapshots/parts are evidence that a native-only save
     # cannot prove it preserves all original content.
-    return bool(set(vars(model)) - {field.name for field in fields(model)})
+    return not vars(model).keys() <= _field_layout(type(model))[1]
 
 
 def requires_metadata_overlay(metadata_book):
@@ -154,31 +155,30 @@ def requires_metadata_overlay(metadata_book):
     if _has_extra_attributes(metadata_book):
         return True
     default_book = MetadataBook()
-    for field in fields(metadata_book):
+    for field in _field_layout(type(metadata_book))[0]:
         if field.name != "sheets" and _snapshot(
             getattr(metadata_book, field.name)
         ) != _snapshot(getattr(default_book, field.name)):
             return True
-    default_cell = CellMetadata()
     for sheet in metadata_book.sheets.values():
         if _has_extra_attributes(sheet):
             return True
         default_sheet = MetadataSheet(title=sheet.title)
-        for field in fields(sheet):
+        for field in _field_layout(type(sheet))[0]:
             name = field.name
             value = getattr(sheet, name)
             if name == "cells":
                 for cell in value.values():
-                    if _has_extra_attributes(cell):
+                    # Only the exact supported shape can bypass the overlay.
+                    # Inspect current keys, not their count: direct mutation can
+                    # add unknown metadata even after an earlier native save.
+                    if (
+                        type(cell) is not CellMetadata
+                        or cell.hyperlink is not None
+                        or cell.comment is not None
+                        or not vars(cell).keys() <= _NATIVE_CELL_FIELDS
+                    ):
                         return True
-                    for cell_field in fields(cell):
-                        if cell_field.name not in (
-                            *_STYLE_FIELDS,
-                            "style_dirty",
-                        ) and _snapshot(getattr(cell, cell_field.name)) != _snapshot(
-                            getattr(default_cell, cell_field.name)
-                        ):
-                            return True
             elif name in ("column_dimensions", "row_dimensions"):
                 default = getattr(default_sheet, name).factory()
                 if any(

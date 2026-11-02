@@ -1555,6 +1555,14 @@ impl PyWorkbook {
         self.wb.read().can_preserve_package()
     }
 
+    fn _enable_plain_structure(&self, py: Python<'_>) -> PyResult<bool> {
+        let workbook = Arc::clone(&self.wb);
+        py.allow_threads(move || {
+            rpyxl_ooxml::writer::enable_plain_structural_edits(&mut workbook.write())
+        })
+        .map_err(map_rpyxl_err)
+    }
+
     fn _original_package<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyBytes>> {
         let bytes = self
             .original_package

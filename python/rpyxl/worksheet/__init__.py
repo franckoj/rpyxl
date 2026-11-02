@@ -354,6 +354,8 @@ class Worksheet:
         self._check_writable()
         if self.parent.write_only:
             raise TypeError("Structural edits are unavailable in write-only mode")
+        if self.parent._try_native_structure():
+            return None
         self.parent._prepare_structure()
         book = self.parent._book
         if book is None:
