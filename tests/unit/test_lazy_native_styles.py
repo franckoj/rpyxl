@@ -590,7 +590,7 @@ def test_sheet_insertion_updates_unloaded_local_name_scopes():
         assert book._book is None
         book.create_sheet("First", index=0)
         assert book._full_metadata_loaded
-        assert book.defined_names["Local"].localSheetId == 1
+        assert book.defined_names["Local", 1].localSheetId == 1
         result = openpyxl.load_workbook(BytesIO(_saved(book)))
         assert "Local" in result["Sheet"].defined_names
         assert "Local" not in result["First"].defined_names

@@ -1552,10 +1552,8 @@ mod temporal_format_tests {
             let value = read_single_cell(&xml[..], 1, col, &shared, &styles, false).unwrap();
             assert_eq!(value, ws.get_cell_value(1, col));
         }
-        assert_eq!(
-            ws.cells().get(&(1, 4)).unwrap().number_format.as_deref(),
-            Some("General")
-        );
+        // The implicit General format must not allocate a String per cell.
+        assert_eq!(ws.cells().get(&(1, 4)).unwrap().number_format, None);
         assert_eq!(
             parse_iso_temporal("2023-02-30"),
             CellValue::String("2023-02-30".into())

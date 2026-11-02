@@ -396,10 +396,22 @@ def test_metadata_fallback_preserves_charts_comments_and_loaded_content(monkeypa
     book.save(source)
     source.seek(0)
     loaded = load_workbook(source)
+    if loaded._native_package_api:
+        assert loaded._book is None
+        preserved = _read_saved(loaded)
+        assert len(calls) == 1
+        assert preserved.properties.title == "Keep this title"
+        assert preserved.active["B2"].comment.text == "Keep this note"
+        assert preserved.active["B2"].font.bold
+        assert len(preserved.active._charts) == 1
+        assert "D1:E1" in preserved.active.merged_cells
+        preserved.close()
+    # Editing rich metadata must still select the conservative fallback.
+    loaded.properties.title = "Updated title"
     assert requires_metadata_overlay(loaded._book)
     result = _read_saved(loaded)
     assert len(calls) == 2
-    assert result.properties.title == "Keep this title"
+    assert result.properties.title == "Updated title"
     assert result.active["B2"].comment.text == "Keep this note"
     assert result.active["B2"].font.bold
     assert len(result.active._charts) == 1
