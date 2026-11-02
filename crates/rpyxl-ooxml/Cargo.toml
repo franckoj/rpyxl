@@ -15,6 +15,7 @@ tempfile = "3"
 itoa = "1.0"
 ryu = "1.0"
 rayon = "1.10"
+rust_xlsxwriter = "=0.100.0"
 
 [dev-dependencies]
-rust_xlsxwriter = "0.100"
+calamine = "=0.38.0"

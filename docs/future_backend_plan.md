@@ -1,6 +1,8 @@
 # Future backend evaluation plan
 
-**Status: proposed, post-0.2.0 work; no backend implementation in this release.**
+**Status: post-0.2.0 experiment on `perf/rust-backends`; released defaults remain unchanged.**
+
+The first opt-in writer adapter and dev-only Calamine probe are being validated on the new branch. See [the experiment scope and commands](backend_experiment.md). Runtime constant-memory writing is deferred because the pinned writer's spill I/O can panic; the initial adapter uses standard in-memory sheets and measures their duplicate-store cost. Additional multicore changes are explicitly deferred.
 
 Release the current work separately from this evaluation. This document neither changes backend selection nor claims a performance result. The 0.2.0 baseline remains experimental and incompletely compatible with openpyxl. Earlier statements that publication was not authorized in the remediation history describe those earlier validation stages, not this future implementation plan.
 
@@ -8,20 +10,20 @@ Release the current work separately from this evaluation. This document neither 
 
 - Cell values currently live in the Rust engine; Python wrappers add sparse rich-feature metadata and a style sidecar. Preserve this single authoritative value model rather than adding another complete cell store.
 - The current loaded-workbook backend retains package parts and style provenance, with native saves for eligible cases and a conservative overlay for rich/unproven edits. Keep it for existing-workbook edits, including unrelated-edit and no-edit preservation workflows. It is not a lossless arbitrary-OOXML editor.
-- `rust_xlsxwriter = "0.100"` is currently a **development dependency only** in `crates/rpyxl-ooxml/Cargo.toml`. Prioritize a Rust adapter for **new workbook generation**, first normal mode, then its constant-memory mode as a separately gated write-only path. Do not imply that it is already RPyXL's writer or that its APIs can edit existing packages.
-- Calamine is **not a current runtime dependency**. Evaluate it separately for Rust reading rather than coupling reader replacement to the writer experiment. Historical documentation mentioning a Calamine runtime reader is not evidence of the present dependency graph.
+- The released 0.2.0 baseline uses `rust_xlsxwriter = "0.100"` only as a development dependency. The experiment pins `=0.100.0` for an **explicitly selected new-workbook adapter**, leaving the default writer unchanged. Standard mode is evaluated first; constant-memory/write-only adoption has an additional fallible-I/O gate. These APIs cannot edit existing packages.
+- Calamine is **not a current runtime dependency**; the experiment pins `=0.38.0` only for dev-only reader tests and native benchmarks. Evaluate it separately for Rust reading rather than coupling reader replacement to the writer experiment. Historical documentation mentioning a Calamine runtime reader is not evidence of the present dependency graph.
 - All adapters must run in-process in Rust through the existing PyO3 boundary. No Python subprocess backend, hidden openpyxl writer, or Python-to-Rust-to-Python serialization loop.
 
 The initial decision is selective adoption, not a wholesale backend rewrite. A reader success does not require adopting a writer, and a write-only success does not justify replacing normal or loaded-workbook saves. There are no 10–100× speedup promises.
 
 ## Proposed routing and ownership
 
-| Workload | Candidate | Default during evaluation |
-| --- | --- | --- |
-| New workbook, normal mode | Opt-in `rust_xlsxwriter` adapter | Current native writer |
-| New workbook, append-only/write-only | Separately opt-in constant-memory adapter | Current write-only writer |
-| Existing workbook load/edit/save | Current preservation backend | Unchanged; never route to a new-workbook generator |
-| Value/style/formula reading | Independent Calamine prototype | Current native reader |
+| Workload                             | Candidate                                 | Default during evaluation                          |
+| ------------------------------------ | ----------------------------------------- | -------------------------------------------------- |
+| New workbook, normal mode            | Opt-in `rust_xlsxwriter` adapter          | Current native writer                              |
+| New workbook, append-only/write-only | Separately opt-in constant-memory adapter | Current write-only writer                          |
+| Existing workbook load/edit/save     | Current preservation backend              | Unchanged; never route to a new-workbook generator |
+| Value/style/formula reading          | Independent Calamine prototype            | Current native reader                              |
 
 Before opening output, build a conservative capability decision covering workbook origin, mode, styles and metadata. A candidate must support the requested semantics or decline explicitly. Unknown styles, subclasses, opaque XML and unsupported features must not silently disappear. Test routing after mutation and metadata promotion, not just at workbook creation.
 
@@ -73,15 +75,15 @@ Measure wall time, total process CPU seconds, absolute peak RSS, baseline RSS, s
 
 These are acceptance criteria for future work, not results already achieved. Freeze any workload-specific exception before measuring; do not move thresholds afterward to make a candidate pass.
 
-| Gate | Required evidence before default adoption of a scoped path |
-| --- | --- |
-| Correctness | Zero value/type mismatches on all applicable deterministic fixtures; all applicable feature assertions pass in the four writer/reader directions from the remediation plan. Unsupported/skipped cases are listed, never counted as passes. Existing passing regressions remain green. |
-| Style/provenance | Zero mismatches in the fixture inventory for font, fill, border, alignment, protection, number formats, theme/indexed colors, blank cells, explicit/default styles and nested/alias mutations. Inspect relevant XML/relationships as well as rendered API values. Unsupported provenance excludes that route. |
-| Safety and routing | All existing malformed-file/resource-limit tests and new candidate failure tests pass; no silent payload loss, no changed loaded-workbook route, and no destination corruption. Test capability decline, metadata promotion, I/O failure and forced-current rollback. |
-| Performance benefit | For a declared target subset, at least 10% lower median end-to-end wall time or 20% lower absolute peak RSS versus current, with the paired confidence interval supporting an improvement in that metric. Other required control cases must not regress by more than 5% in wall time, CPU or peak RSS without an explicitly accepted, documented opt-in-only tradeoff. |
-| Constant-memory claim | At fixed unique styles/strings and metadata, absolute peak RSS at 4N rows increases by at most 20% over N, and instrumentation confirms no row-count-sized duplicate store. Report temporary-disk growth and any limits; vary style/string cardinality separately. |
-| Compatibility and packaging | Build and install portable wheels across the project's supported Linux, macOS and Windows targets/architectures and Python matrix; smoke-test paths, streams and failures from installed wheels. Build with the agreed minimum supported Rust version (MSRV) and stable Rust, with dependency/features/license review completed. |
-| Reproducibility | Retain fixture hashes, raw results, commands, build/dependency versions and validation artifacts. A second supported platform confirms qualifying improvements; a maintainer reviews the scope and rollback path before a default change. |
+| Gate                        | Required evidence before default adoption of a scoped path                                                                                                                                                                                                                                                                                                             |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Correctness                 | Zero value/type mismatches on all applicable deterministic fixtures; all applicable feature assertions pass in the four writer/reader directions from the remediation plan. Unsupported/skipped cases are listed, never counted as passes. Existing passing regressions remain green.                                                                                  |
+| Style/provenance            | Zero mismatches in the fixture inventory for font, fill, border, alignment, protection, number formats, theme/indexed colors, blank cells, explicit/default styles and nested/alias mutations. Inspect relevant XML/relationships as well as rendered API values. Unsupported provenance excludes that route.                                                          |
+| Safety and routing          | All existing malformed-file/resource-limit tests and new candidate failure tests pass; no silent payload loss, no changed loaded-workbook route, and no destination corruption. Test capability decline, metadata promotion, I/O failure and forced-current rollback.                                                                                                  |
+| Performance benefit         | For a declared target subset, at least 10% lower median end-to-end wall time or 20% lower absolute peak RSS versus current, with the paired confidence interval supporting an improvement in that metric. Other required control cases must not regress by more than 5% in wall time, CPU or peak RSS without an explicitly accepted, documented opt-in-only tradeoff. |
+| Constant-memory claim       | At fixed unique styles/strings and metadata, absolute peak RSS at 4N rows increases by at most 20% over N, and instrumentation confirms no row-count-sized duplicate store. Report temporary-disk growth and any limits; vary style/string cardinality separately.                                                                                                     |
+| Compatibility and packaging | Build and install portable wheels across the project's supported Linux, macOS and Windows targets/architectures and Python matrix; smoke-test paths, streams and failures from installed wheels. Build with the agreed minimum supported Rust version (MSRV) and stable Rust, with dependency/features/license review completed.                                       |
+| Reproducibility             | Retain fixture hashes, raw results, commands, build/dependency versions and validation artifacts. A second supported platform confirms qualifying improvements; a maintainer reviews the scope and rollback path before a default change.                                                                                                                              |
 
 The known append regression (approximately 11–13% in the recorded paired investigation) stays open. It must not be hidden in aggregate speedups or attributed to a backend without evidence. Styled memory around 300 MiB versus openpyxl's 195 MiB in the recorded incremental-RSS run is another explicit control, not proof that any candidate will fix it. Historical 43/44 API probes include deliberate rejection of table name `T1`; that difference is not full drop-in compatibility.
 

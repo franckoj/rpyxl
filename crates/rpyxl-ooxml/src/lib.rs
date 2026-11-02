@@ -1,3 +1,4 @@
+pub mod crate_writer;
 pub mod reader;
 pub mod shared_strings;
 pub mod styles;

@@ -16,6 +16,7 @@ use rpyxl_core::coordinate::{
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
 use rpyxl_core::package::PackageTemplate;
 use rpyxl_core::workbook::Workbook;
+use rpyxl_ooxml::crate_writer::{save_workbook_rust_xlsxwriter, write_workbook_rust_xlsxwriter};
 use rpyxl_ooxml::reader::{MAX_TOTAL_UNCOMPRESSED_SIZE, MAX_UNCOMPRESSED_FILE_SIZE};
 use rpyxl_ooxml::writer::{save_workbook_generated, write_workbook_generated};
 use rpyxl_ooxml::{
@@ -1685,6 +1686,30 @@ impl PyWorkbook {
             Ok(())
         })
         .map_err(map_rpyxl_err)
+    }
+
+    fn _save_rust_xlsxwriter(&self, path: &Bound<'_, PyAny>) -> PyResult<()> {
+        if self.original_package.is_some() {
+            return Err(PyValueError::new_err(
+                "rust_xlsxwriter backend only supports newly created workbooks",
+            ));
+        }
+        let py = path.py();
+        let wb = Arc::clone(&self.wb);
+        if let Some(path) = filesystem_path(path)? {
+            return py
+                .allow_threads(move || save_workbook_rust_xlsxwriter(path, &wb.read()))
+                .map_err(map_rpyxl_err);
+        }
+        check_binary_writer(path)?;
+        let bytes = py
+            .allow_threads(move || {
+                let mut buffer = Cursor::new(Vec::new());
+                write_workbook_rust_xlsxwriter(&mut buffer, &wb.read())?;
+                Ok::<_, RpyxlError>(buffer.into_inner())
+            })
+            .map_err(map_rpyxl_err)?;
+        write_binary_output(path, &bytes)
     }
 
     #[pyo3(signature = (path, *, preserve_original=true))]

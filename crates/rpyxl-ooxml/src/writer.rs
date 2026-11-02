@@ -1610,7 +1610,7 @@ fn check_xml_limits(
     Ok(())
 }
 
-fn validate_style_fragment(fragment: &str, expected: &str) -> RpyxlResult<()> {
+pub(crate) fn validate_style_fragment(fragment: &str, expected: &str) -> RpyxlResult<()> {
     let invalid = || RpyxlError::ValueError(format!("Invalid rich-style {expected} fragment"));
     if !fragment.chars().all(is_xml_character) {
         return Err(invalid());
@@ -1728,21 +1728,21 @@ fn validate_style_fragment(fragment: &str, expected: &str) -> RpyxlResult<()> {
 
 // Byte ranges let us append to native tables without rebuilding unrelated XML.
 #[derive(Clone)]
-struct XmlElement {
+pub(crate) struct XmlElement {
     start: usize,
     open_end: usize,
     close_start: usize,
     end: usize,
     name: String,
     namespace: String,
-    attributes: HashMap<String, String>,
+    pub(crate) attributes: HashMap<String, String>,
     expanded_attributes: Vec<(String, String)>,
-    children: Vec<XmlElement>,
+    pub(crate) children: Vec<XmlElement>,
     text: Vec<(usize, String)>,
 }
 
 impl XmlElement {
-    fn has_text(&self) -> bool {
+    pub(crate) fn has_text(&self) -> bool {
         self.text.iter().any(|(_, text)| !text.trim().is_empty())
     }
 
@@ -1756,11 +1756,11 @@ impl XmlElement {
         }
         self.text.push((position, text.to_owned()));
     }
-    fn local_name(&self) -> &str {
+    pub(crate) fn local_name(&self) -> &str {
         self.name.rsplit(':').next().unwrap_or(&self.name)
     }
 
-    fn is_main(&self, name: &str) -> bool {
+    pub(crate) fn is_main(&self, name: &str) -> bool {
         self.namespace.as_bytes() == SPREADSHEET_NS && self.local_name() == name
     }
 
@@ -1830,7 +1830,7 @@ impl XmlElement {
     }
 }
 
-fn parse_xml(xml: &str) -> RpyxlResult<XmlElement> {
+pub(crate) fn parse_xml(xml: &str) -> RpyxlResult<XmlElement> {
     parse_xml_with_limits(xml, MAX_XML_DEPTH, MAX_XML_NODES)
 }
 
@@ -3166,7 +3166,7 @@ fn date_to_excel_serial(s: &str) -> Option<f64> {
     temporal_to_excel_serial(s, false)
 }
 
-fn temporal_to_excel_serial(s: &str, date_1904: bool) -> Option<f64> {
+pub(crate) fn temporal_to_excel_serial(s: &str, date_1904: bool) -> Option<f64> {
     let fraction = |time: NaiveTime| {
         // Leap seconds and timezone-aware values have no Excel serial equivalent.
         if time.nanosecond() >= 1_000_000_000 {

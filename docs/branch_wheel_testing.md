@@ -6,7 +6,7 @@ create tags or releases, or change the package version.
 
 ## Start a build
 
-- Pushing a commit to `fix/text-fidelity` automatically starts the workflow.
+- Pushing a commit to `perf/rust-backends` automatically starts the workflow. The fully merged `fix/text-fidelity` branch has been retired.
 - After the workflow also exists on the repository's default branch, open
   **Actions → Test Branch Wheel → Run workflow** and select the branch to test.
   A new `workflow_dispatch` workflow may not be available in the Actions UI until
@@ -19,7 +19,7 @@ create tags or releases, or change the package version.
 1. Builds a release-mode Windows x64 wheel with Python 3.11 and Rust on GitHub.
 2. Uploads the wheel and `build-info.json`, recording the source commit, filename,
    build Python, and SHA-256 checksum.
-3. Runs the native Rust core and OOXML tests, including rich-style serialization.
+3. Checks Rust formatting/Clippy and runs native core/OOXML tests, including the experimental backend guards. It also builds and uploads `rpyxl-reader-comparison-windows-x64-<commit>`, a native Calamine/current-reader comparison executable.
 4. After the native tests pass, installs that exact wheel in separate Python 3.11
    and 3.14 jobs, without rebuilding or setting up Rust in those jobs.
 5. Runs the unit, compatibility, and integration Python suites against the installed
@@ -58,7 +58,7 @@ Run the prepared regressions from the same checkout revision as the build:
 .\.venv-test\Scripts\python.exe -m pytest tests/unit tests/compatibility tests/integration -v
 ```
 
-Check `build-info.json` to distinguish this branch build from the PyPI `0.1.1`
+Check `build-info.json` to distinguish this branch build from the PyPI `0.2.0`
 release: the development branch currently has the same version number. Force-install
 the downloaded wheel rather than installing `rpyxl` by name from PyPI. Installation
 into `.venv-test` leaves your existing environment unchanged.

@@ -39,8 +39,26 @@ class Workbook(metaclass=_WorkbookMeta):
     """
 
     def __init__(
-        self, write_only=False, *, _native=None, _source=None, _owns_source=False
+        self,
+        write_only=False,
+        *,
+        backend="native",
+        _native=None,
+        _source=None,
+        _owns_source=False,
     ):
+        if backend not in ("native", "rust_xlsxwriter"):
+            raise ValueError("backend must be 'native' or 'rust_xlsxwriter'")
+        if backend == "rust_xlsxwriter":
+            if write_only:
+                raise NotImplementedError(
+                    "The experimental rust_xlsxwriter backend does not support write-only mode yet"
+                )
+            if _native is not None or _source is not None:
+                raise ValueError("rust_xlsxwriter is only available for new workbooks")
+            if not hasattr(NativeWorkbook, "_save_rust_xlsxwriter"):
+                raise RuntimeError("Rebuild the native wheel to use rust_xlsxwriter")
+        self._backend = backend
         self._native = (
             _native
             if _native is not None
@@ -87,6 +105,11 @@ class Workbook(metaclass=_WorkbookMeta):
 
     def __getattr__(self, name):
         return getattr(self._native, name)
+
+    @property
+    def backend(self):
+        """Selected writer; loaded workbooks always retain the native backend."""
+        return self._backend
 
     @property
     def read_only(self):
@@ -357,8 +380,39 @@ class Workbook(metaclass=_WorkbookMeta):
             metadata.title = worksheet.title
             book.sheets[worksheet.title] = metadata
 
+    def _save_crate_backend(self, filename):
+        from .._native_styles import compile_style_records, requires_metadata_overlay
+        from .._style_pool import FrozenStyle
+
+        save = getattr(self._native, "_save_rust_xlsxwriter", None)
+        if not callable(save):
+            # A missing backend ABI is not an invalid caller argument.
+            raise RuntimeError("Rebuild the native wheel to use rust_xlsxwriter")  # noqa: TRY004
+        if self._has_original or self.write_only:
+            raise NotImplementedError(
+                "rust_xlsxwriter is only available for new editable workbooks"
+            )
+        if requires_metadata_overlay(self._book):
+            raise NotImplementedError(
+                "rust_xlsxwriter does not support this workbook metadata; use backend='native'"
+            )
+        if self._book is not None:
+            for sheet in self._book.sheets.values():
+                for cell in sheet.cells.values():
+                    for name in ("font", "fill", "border", "alignment", "protection"):
+                        value = getattr(cell, name)
+                        if value is not None and type(value) is not FrozenStyle:
+                            raise NotImplementedError(
+                                "Opaque or custom style models require backend='native'"
+                            )
+        records, assignments = compile_style_records(self._book)
+        self._native._update_cell_styles(records, assignments)
+        save(filename)
+
     def save(self, filename):
         self._check_writable()
+        if self._backend == "rust_xlsxwriter":
+            return self._save_crate_backend(filename)
         if self._native_style_reader is not None:
             self._native_style_reader.flush()
         needs_overlay = None
