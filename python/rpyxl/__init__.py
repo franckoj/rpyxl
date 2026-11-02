@@ -10,18 +10,18 @@ from .workbook import (
 )
 from .worksheet import NativeWorksheet, Worksheet
 
-__version__ = "0.1.1"
+__version__ = "0.2.0"
 
 __all__ = [
-    "Workbook",
-    "Worksheet",
     "Cell",
     "MergedCell",
     "NativeCell",
-    "NativeWorksheet",
-    "NativeWorkbook",
     "NativeReadOnlyWorkbook",
+    "NativeWorkbook",
+    "NativeWorksheet",
     "NativeWriteOnlyWorkbook",
-    "load_workbook",
+    "Workbook",
+    "Worksheet",
     "__version__",
+    "load_workbook",
 ]

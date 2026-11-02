@@ -8,32 +8,22 @@
 
 RPyXL is an experimental Python spreadsheet library with an **[openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)-style API**, backed by a Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
 
-**Compatibility is incomplete.** The `fix/text-fidelity` branch contains unverified data-fidelity and rich-feature implementations. Runtime and interoperability testing is deferred; these changes do not establish production readiness, lossless workbook preservation, or general drop-in compatibility. See the [remediation plan](docs/remediation_plan.md) for status and limitations.
+**Compatibility is incomplete.** Version 0.2.0 adds tested text/temporal fidelity, file-like I/O, copy-on-write styles, rich-feature wrappers, and guarded native package preservation. Scoped tests do not establish production readiness, arbitrary lossless workbook preservation, or general drop-in compatibility. Unsupported reference-sensitive edits and cell payloads may be rejected rather than saved incorrectly. See the [remediation plan](docs/remediation_plan.md) for evidence and limitations.
 
 ---
 
 ## Performance Highlights
 
-Earlier benchmarks reported speedups of **4.7Ãƒâ€” to 8.7Ãƒâ€”** for supported workloads, with peak throughput exceeding **1.68 million cells/second**. These measurements have not been revalidated for the compatibility changes on this branch:
+A targeted Windows/Python 3.14.3 comparison of the 0.2.0 implementation at `5883f7f` against openpyxl 3.1.5 used **20,000 rows x 20 columns**, fresh processes, and three repetitions with rotated execution order:
 
-| Scale | Dataset | Operation | openpyxl | RPyXL | Speedup | RPyXL Throughput |
-|---|---|---|---|---|---|---|
-| **Small** | 1,000 cells (100r Ã— 10c) | Standard Save | 0.0093s | **0.0020s** | **4.71Ã— faster** | 505,082 cells/s |
-| | | Streaming Write-Only | 0.0130s | **0.0022s** | **5.89Ã— faster** | 452,753 cells/s |
-| | | Streaming Read-Only | 0.0102s | **0.0024s** | **4.18Ã— faster** | 409,948 cells/s |
-| **Medium** | 10,000 cells (1,000r Ã— 10c) | Standard Save | 0.0512s | **0.0101s** | **5.05Ã— faster** | 987,167 cells/s |
-| | | Streaming Write-Only | 0.0493s | **0.0071s** | **6.97Ã— faster** | 1,414,669 cells/s |
-| | | Streaming Read-Only | 0.0428s | **0.0113s** | **3.80Ã— faster** | 888,284 cells/s |
-| **Large** | 100,000 cells (10,000r Ã— 10c) | Standard Save | 0.5115s | **0.0719s** | **7.12Ã— faster** | 1,391,000 cells/s |
-| | | Streaming Write-Only | 0.4204s | **0.0648s** | **6.49Ã— faster** | 1,542,970 cells/s |
-| | | Standard Load | 0.5678s | **0.0607s** | **9.35Ã— faster** | 1,647,446 cells/s |
-| | | Streaming Read-Only | 0.3389s | **0.0687s** | **4.93Ã— faster** | 1,455,411 cells/s |
-| **Stress** | 500,000 cells (50,000r Ã— 10c) | Standard Save | 2.7976s | **0.3447s** | **8.12Ã— faster** | 1,450,658 cells/s |
-| | | Streaming Write-Only | 2.1202s | **0.2961s** | **7.16Ã— faster** | **1,688,650 cells/s** |
-| | | Standard Load | 2.7133s | **0.3109s** | **8.73Ã— faster** | 1,608,234 cells/s |
-| | | Streaming Read-Only | 1.6987s | **0.3312s** | **5.13Ã— faster** | 1,509,715 cells/s |
+| Operation                               | openpyxl |   RPyXL | Speedup |
+| --------------------------------------- | -------: | ------: | ------: |
+| Styled writing                          |  17.45 s | 13.63 s |   1.28x |
+| Insert/delete rows, including load/save |  11.75 s |  5.55 s |   2.12x |
 
-*RAM Savings on 500k Cells: RPyXL uses **225 MB** vs openpyxl's **373 MB** (148 MB less RAM).*
+These are workload-specific medians, not a universal performance guarantee. Styled-write incremental sampled memory remained higher than openpyxl (about 300 vs 195 MiB). Plain append/save also showed an unresolved 11-13% slowdown relative to an earlier rpyxl wheel in a separate control. See the [measurement evidence and remaining limitations](docs/remediation_plan.md).
+
+The [future backend plan](docs/future_backend_plan.md) evaluates `rust_xlsxwriter` and Calamine separately; neither is a production backend in this release.
 
 ---
 
@@ -61,6 +51,7 @@ See the full [Migration Guide](docs/migration_guide.md) for details.
 ## Quick Start
 
 ### 1. In-Memory Workbook Writing
+
 ```python
 import rpyxl
 
@@ -81,7 +72,8 @@ wb.save("sales_report.xlsx")
 ```
 
 ### 2. High-Throughput Streaming Writer (`write_only=True`)
-Ideal for multi-million cell database dumps with constant $O(1)$ memory consumption:
+
+Uses row-wise, disk-backed output for lower-memory exports; it does not support random cell access:
 
 ```python
 import rpyxl
@@ -99,7 +91,8 @@ wb.save("transactions.xlsx")
 ```
 
 ### 3. Streaming Reader (`read_only=True`)
-Iterates rows on-the-fly with a 550Ã— faster time-to-first-row:
+
+Iterates worksheet rows on demand. Accessing rich metadata can require additional workbook-wide loading:
 
 ```python
 import rpyxl
@@ -112,6 +105,7 @@ with rpyxl.load_workbook("transactions.xlsx", read_only=True) as wb:
 ```
 
 ### 4. Advanced Slicing & Iteration
+
 ```python
 # 2D tuple of Cell instances
 grid = ws["A1:C10"]
@@ -128,12 +122,15 @@ rows_1_5 = ws[1:5]    # 2D tuple of row tuples
 ## Installation
 
 ### From Pre-Built Wheels (ABI3)
+
 ```bash
 pip install rpyxl
 ```
-*Supports Python 3.9, 3.10, 3.11, 3.12, 3.13 on Linux, macOS (Apple Silicon & Intel), and Windows.*
+
+_Requires Python 3.9 or newer. ABI3 wheels target Linux (x86_64 and aarch64), macOS (Apple Silicon and Intel), and Windows x64. See CI and release artifacts for tested combinations._
 
 ### From Source
+
 ```bash
 git clone https://github.com/franckoj/rpyxl.git
 cd rpyxl
@@ -145,7 +142,8 @@ maturin develop --release
 
 ## Documentation & Phase Reports
 
-- [Release Changelog](CHANGELOG.md): Complete release history and v0.1.0 release notes.
+- [Release Changelog](CHANGELOG.md): Release history and 0.2.0 changes.
+- [Future Backend Plan](docs/future_backend_plan.md): Staged writer and reader backend evaluation.
 - [API Reference Manual](docs/api_reference.md): Detailed signatures and parameter reference.
 - [openpyxl Migration Guide](docs/migration_guide.md): Drop-in patterns, edge cases, and best practices.
 - [API Compatibility Matrix](docs/compatibility_matrix.md): Exhaustive openpyxl vs RPyXL feature matrix.
@@ -171,14 +169,14 @@ The entire test suite is containerized for deterministic reproduction:
 # Build test container
 docker build -t rpyxl-test .
 
-# Run Rust unit and integration tests (21 passed)
-docker run --rm -v $(pwd):/workspace rpyxl-test cargo test --workspace
+# Run pure Rust unit and integration tests
+docker run --rm -v $(pwd):/workspace rpyxl-test cargo test -p rpyxl-core -p rpyxl-ooxml
 
 # Run formatting & Clippy linter
 docker run --rm -v $(pwd):/workspace rpyxl-test cargo fmt --all -- --check
 docker run --rm -v $(pwd):/workspace rpyxl-test cargo clippy --workspace --all-targets -- -D warnings
 
-# Run Python compatibility, unit, and security tests (84 passed, 105 total)
+# Run Python compatibility, unit, and security tests
 docker run --rm -v $(pwd):/workspace rpyxl-test bash -c "maturin develop && pytest tests/ -v"
 
 # Run multi-scale benchmarks (1k, 10k, 100k, 500k cells)
@@ -194,7 +192,7 @@ graph TD
     A[Python Application] -->|Import rpyxl| B[Python Compatibility Layer]
     B --> C[rpyxl._core PyO3 Bindings]
     C --> D[rpyxl-core: Sparse BTreeMap Cell Store]
-    C --> E[rpyxl-ooxml: Serializer & Calamine Reader]
+    C --> E[rpyxl-ooxml: Native XML Reader and Writer]
     E --> F[Direct ZIP & XML Streaming]
     D -->|Rayon Multi-Threading| E
 ```
@@ -209,6 +207,7 @@ graph TD
 ## License
 
 Licensed under either of:
+
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE) or http://www.apache.org/licenses/LICENSE-2.0)
 - MIT license ([LICENSE-MIT](LICENSE) or http://opensource.org/licenses/MIT)
 

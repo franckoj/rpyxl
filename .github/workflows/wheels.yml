@@ -1,130 +1,221 @@
 name: Build Wheels
 
 on:
-  push:
-    tags:
-      - 'v*'
-  workflow_dispatch:
+    push:
+        tags:
+            - "v*"
+    workflow_dispatch:
 
 permissions:
-  contents: read
+    contents: read
 
 jobs:
-  linux:
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        target: [x86_64, aarch64]
-    steps:
-      - uses: actions/checkout@v4
+    linux:
+        runs-on: ubuntu-latest
+        strategy:
+            matrix:
+                target: [x86_64, aarch64]
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
-          sccache: 'true'
-          manylinux: auto
+            - name: Build wheels
+              uses: PyO3/maturin-action@v1
+              with:
+                  target: ${{ matrix.target }}
+                  args: --release --out dist --find-interpreter
+                  sccache: "true"
+                  manylinux: auto
 
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-linux-${{ matrix.target }}
-          path: dist
+            - name: Upload wheels
+              uses: actions/upload-artifact@v4
+              with:
+                  name: wheels-linux-${{ matrix.target }}
+                  path: dist
 
-  macos:
-    runs-on: macos-14
-    strategy:
-      matrix:
-        target: [x86_64, aarch64]
-    steps:
-      - uses: actions/checkout@v4
+    macos:
+        runs-on: macos-14
+        strategy:
+            matrix:
+                target: [x86_64, aarch64]
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
-          sccache: 'true'
+            - name: Build wheels
+              uses: PyO3/maturin-action@v1
+              with:
+                  target: ${{ matrix.target }}
+                  args: --release --out dist --find-interpreter
+                  sccache: "true"
 
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-macos-${{ matrix.target }}
-          path: dist
+            - name: Upload wheels
+              uses: actions/upload-artifact@v4
+              with:
+                  name: wheels-macos-${{ matrix.target }}
+                  path: dist
 
-  windows:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        target: [x64]
-    steps:
-      - uses: actions/checkout@v4
+    windows:
+        runs-on: windows-latest
+        strategy:
+            matrix:
+                target: [x64]
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Build wheels
-        uses: PyO3/maturin-action@v1
-        with:
-          target: ${{ matrix.target }}
-          args: --release --out dist --find-interpreter
-          sccache: 'true'
+            - name: Build wheels
+              uses: PyO3/maturin-action@v1
+              with:
+                  target: ${{ matrix.target }}
+                  args: --release --out dist --find-interpreter
+                  sccache: "true"
 
-      - name: Upload wheels
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-windows-${{ matrix.target }}
-          path: dist
+            - name: Upload wheels
+              uses: actions/upload-artifact@v4
+              with:
+                  name: wheels-windows-${{ matrix.target }}
+                  path: dist
 
-  sdist:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
+    sdist:
+        runs-on: ubuntu-latest
+        steps:
+            - uses: actions/checkout@v4
 
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
+            - name: Build sdist
+              uses: PyO3/maturin-action@v1
+              with:
+                  command: sdist
+                  args: --out dist
 
-      - name: Verify sdist license files
-        run: |
-          python - <<'PY'
-          from email.parser import BytesParser
-          from pathlib import Path
-          import tarfile
+            - name: Verify sdist license files
+              run: |
+                  python - <<'PY'
+                  from email.parser import BytesParser
+                  from pathlib import Path
+                  import tarfile
 
-          for path in Path("dist").glob("*.tar.gz"):
-              with tarfile.open(path) as archive:
-                  root = path.name.removesuffix(".tar.gz")
-                  metadata = BytesParser().parsebytes(archive.extractfile(f"{root}/PKG-INFO").read())
-                  declared = metadata.get_all("License-File", [])
-                  assert "LICENSE" in declared, "LICENSE is missing from package metadata"
-                  for license_file in declared:
-                      member = archive.getmember(f"{root}/{license_file}")
-                      assert member.isfile() and member.size > 0, f"Missing or empty license: {license_file}"
-              print(f"Verified license files in {path}")
-          PY
+                  for path in Path("dist").glob("*.tar.gz"):
+                      with tarfile.open(path) as archive:
+                          root = path.name.removesuffix(".tar.gz")
+                          metadata = BytesParser().parsebytes(archive.extractfile(f"{root}/PKG-INFO").read())
+                          declared = metadata.get_all("License-File", [])
+                          assert "LICENSE" in declared, "LICENSE is missing from package metadata"
+                          for license_file in declared:
+                              member = archive.getmember(f"{root}/{license_file}")
+                              assert member.isfile() and member.size > 0, f"Missing or empty license: {license_file}"
+                      print(f"Verified license files in {path}")
+                  PY
 
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: wheels-sdist
-          path: dist
+            - name: Upload sdist
+              uses: actions/upload-artifact@v4
+              with:
+                  name: wheels-sdist
+                  path: dist
 
-  publish:
-    name: Publish to PyPI
-    needs: [linux, macos, windows, sdist]
-    if: startsWith(github.ref, 'refs/tags/v')
-    runs-on: ubuntu-latest
-    permissions:
-      id-token: write
+    test-wheels:
+        name: Test built wheel (${{ matrix.os }}, Python ${{ matrix.python }})
+        needs: [linux, macos, windows, sdist]
+        runs-on: ${{ matrix.os }}
+        timeout-minutes: 20
+        strategy:
+            fail-fast: false
+            matrix:
+                include:
+                    - os: ubuntu-latest
+                      python: "3.9"
+                      artifact: wheels-linux-x86_64
+                    - os: ubuntu-latest
+                      python: "3.14"
+                      artifact: wheels-linux-x86_64
+                    - os: macos-14
+                      python: "3.11"
+                      artifact: wheels-macos-aarch64
+                    - os: macos-14
+                      python: "3.14"
+                      artifact: wheels-macos-aarch64
+                    - os: windows-latest
+                      python: "3.9"
+                      artifact: wheels-windows-x64
+                    - os: windows-latest
+                      python: "3.14"
+                      artifact: wheels-windows-x64
+        defaults:
+            run:
+                shell: bash
+        steps:
+            - uses: actions/checkout@v4
 
-    steps:
-      - name: Download distributions
-        uses: actions/download-artifact@v4
-        with:
-          pattern: wheels-*
-          merge-multiple: true
-          path: dist
+            - uses: actions/setup-python@v5
+              with:
+                  python-version: ${{ matrix.python }}
 
-      - name: Publish to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+            - uses: actions/download-artifact@v4
+              with:
+                  name: ${{ matrix.artifact }}
+                  path: dist
+
+            - name: Install wheel and test dependencies
+              run: |
+                  python -m pip install pytest openpyxl python-calamine psutil tabulate packaging
+                  python - <<'PY'
+                  from pathlib import Path
+                  import subprocess
+                  import sys
+                  from packaging.tags import sys_tags
+                  from packaging.utils import parse_wheel_filename
+
+                  supported = set(sys_tags())
+                  wheels = [path for path in Path('dist').glob('*.whl')
+                            if parse_wheel_filename(path.name)[3] & supported]
+                  assert len(wheels) == 1, f'Expected one compatible wheel, found {wheels}'
+                  subprocess.run([sys.executable, '-m', 'pip', 'install', '--no-deps',
+                                  '--force-reinstall', str(wheels[0])], check=True)
+                  PY
+
+            - name: Verify version and run installed-wheel regressions
+              env:
+                  RELEASE_REF: ${{ github.ref }}
+              run: |
+                  python - <<'PY'
+                  import ast
+                  import os
+                  from pathlib import Path
+                  import rpyxl
+                  import rpyxl._core
+
+                  metadata = ast.parse(Path('python/rpyxl/__init__.py').read_text())
+                  expected = next(ast.literal_eval(node.value) for node in metadata.body
+                                  if isinstance(node, ast.Assign)
+                                  and any(isinstance(target, ast.Name) and target.id == '__version__'
+                                          for target in node.targets))
+                  assert rpyxl.__version__ == expected
+                  ref = os.environ['RELEASE_REF']
+                  if ref.startswith('refs/tags/v'):
+                      assert ref.removeprefix('refs/tags/v') == expected
+                  print('Package:', rpyxl.__file__)
+                  print('Extension:', rpyxl._core.__file__)
+                  print('Version:', expected)
+                  PY
+                  python -m pytest tests -q --tb=short
+
+    publish:
+        name: Publish to PyPI
+        needs: [linux, macos, windows, sdist, test-wheels]
+        if: startsWith(github.ref, 'refs/tags/v')
+        runs-on: ubuntu-latest
+        permissions:
+            id-token: write
+
+        steps:
+            - name: Download distributions
+              uses: actions/download-artifact@v4
+              with:
+                  pattern: wheels-*
+                  merge-multiple: true
+                  path: dist
+
+            - name: Check distribution metadata
+              run: |
+                  python -m pip install twine
+                  python -m twine check dist/*
+
+            - name: Publish to PyPI
+              uses: pypa/gh-action-pypi-publish@release/v1

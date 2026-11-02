@@ -7,6 +7,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.2.0] - 2026-11-02
+
+This release expands the openpyxl-style wrapper and improves selected native save paths since 0.1.1. Compatibility remains incomplete: this is not a general drop-in replacement, a lossless arbitrary-OOXML editor, or a production-readiness claim. The 0.1.0 entry below is retained as historical release text, not revalidated claims for 0.2.0.
+
+### Added
+
+- Expanded wrapper support for cell styles, worksheet metadata (merges, dimensions, freeze panes, filters, visibility, protection and page setup), structural edits, workbook properties, defined names, comments, hyperlinks, validations, conditional formatting, tables and basic bar/column charts. Support is feature- and mode-specific, not full openpyxl parity.
+- Binary file-like loading and saving, including `BytesIO`, with caller-owned stream lifetime, input-position preservation and output replacement/truncation. Inputs are buffered; output streams must support seek/write/truncate.
+- Native interned style persistence with pooled copy-on-write Python style views, lazy loaded-style decoding and sparse overrides. Source stylesheet provenance includes the distinction between explicit `s="0"` and an absent style attribute.
+- Preservation-oriented saves for eligible loaded workbooks: retain a bounded compressed source snapshot, raw-copy unchanged ZIP members and regenerate native cells/styles in one output package. Rich or unproven edits retain the conservative metadata overlay; preservation of unknown parts remains best-effort.
+- An atomic, all-sheet eligibility proof enabling native structural saves only for a narrowly proven plain-workbook subset. Unproven workbooks retain the conservative fallback.
+- A separate [future backend evaluation plan](docs/future_backend_plan.md). No new backend implementation or runtime dependency is introduced by that plan in 0.2.0.
+
+### Fixed
+
+- Exact text handling for leading/trailing whitespace, XML newline normalization and carriage-return escaping.
+- Date/datetime/time conversion, fractional seconds, millisecond serial rounding, 1900/1904 epoch reads and number-format persistence. Elapsed durations and some locale-specific/write-only formats remain limited.
+- Malformed coordinate validation: require a complete ASCII cell reference, reject mixed/trailing content and misplaced absolute markers, and retain Excel row/column bounds checks.
+- Range separator validation: reject extra separators, missing endpoints and malformed endpoint references while retaining absolute references and normalized reversed bounds. These fixes and regressions are incorporated from `main`.
+- Save-time safety rejection of detected unsupported cell payloads, including shared/array-formula attributes, inline rich-text runs and cell metadata, rather than silently rewriting them incorrectly. Loading/reading remains available; broader shared-string and formula coverage is incomplete.
+
+### Changed
+
+- Reduced repeated style eligibility scans and snapshots; metadata output avoids full-tree copying and double serialization while restoring temporarily changed attributes safely.
+- Structural editing still rejects formula translation and reference-bearing features where correct rewriting is not implemented. There is no formula calculation, general editable-chart support, threaded-comment support or new-image API.
+
+### Validation and measured performance
+
+- **Pre-`main`-merge evidence at `5883f7f`:** 112 Rust tests passed; 450 Python tests passed with one skip on each of Windows Python 3.11 and 3.14. The skip targets older native wheels lacking the new private API. These are not validation counts for the merged 0.2.0 release candidate; combined results must be reported separately.
+- The earlier quick interoperability harness recorded 43/44 API probes, zero cell mismatches and 10/10 feature checks in each of four writer/reader directions. The remaining API difference is stricter rejection of the cell-reference-like table name `T1`. The outer harness command timed out after producing its reports; this is scoped evidence, not a clean full-release acceptance run.
+- Targeted measurements compare `6899d7e` with `5883f7f` and openpyxl 3.1.5 in the same Windows/Python 3.14.3 session, using fresh processes, rotating order and three repetitions. Both cases use **20,000 rows × 20 columns**; figures below are medians. Memory is **sampled incremental RSS**, not absolute peak memory.
+
+| Workload                                | Previous rpyxl | `5883f7f` rpyxl | openpyxl | rpyxl incremental RSS, previous → new |
+| --------------------------------------- | -------------: | --------------: | -------: | ------------------------------------: |
+| Styled write                            |        18.49 s |         13.63 s |  17.45 s |                     304.2 → 300.5 MiB |
+| Insert/delete rows, including load/save |        16.36 s |          5.55 s |  11.75 s |                     722.7 → 152.4 MiB |
+
+- Styled-write memory remains above openpyxl's 194.5 MiB in that run (approximately 300 versus 195 MiB). The Python style sidecar has not been eliminated. Output checks compared 400,000 cells per case per rpyxl wheel with zero mismatches, plus nine sampled style checks per styled output; this does not establish exhaustive style fidelity.
+- An append control remains unresolved: a separate nine-pair alternating-order investigation found median total wall time approximately 11% higher at 10,000 × 20 and 13% higher at 50,000 × 20 for the new wheel. No specific source-level cause was established. Read iteration was roughly unchanged in the original control.
+- The full 20-scenario large benchmark matrix has not been repeated after this increment. These results do not imply universal speed, CPU or memory superiority, constant-memory loaded editing, or the historical 0.1.0 speedups for this release. See the [remediation evidence and limitations](docs/remediation_plan.md).
+
 ## [0.1.1] - 2026-10-29
 
 ### Changed
