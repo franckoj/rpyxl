@@ -101,7 +101,7 @@ def _component_xml(name, value):
     return ET.tostring(node, encoding="unicode")
 
 
-def compile_style_records(metadata_book):
+def compile_style_records(metadata_book, *, pristine_defaults=None):
     """Return ``(records, assignments)`` for ``_replace_cell_styles``.
 
     Records contain optional font/fill/border/alignment/protection XML strings,
@@ -109,6 +109,8 @@ def compile_style_records(metadata_book):
     Number formats remain entirely native-owned. All caches are local to this
     invocation, and each distinct component value is serialized only once.
     Empty results are meaningful: native replacement must clear previous styles.
+    A candidate backend may omit untouched getter-only defaults; dirty cells and
+    explicitly assigned styles must still go through its capability validator.
     """
     records, assignments = [], []
     components, indices = {}, {}
@@ -117,6 +119,15 @@ def compile_style_records(metadata_book):
     for title, sheet in metadata_book.sheets.items():
         for coordinate, cell in sheet.cells.items():
             values = tuple(getattr(cell, name) for name in _STYLE_FIELDS)
+            if (
+                pristine_defaults is not None
+                and not cell.style_dirty
+                and all(
+                    value is None or value is pristine_defaults.get(name)
+                    for name, value in zip(_STYLE_FIELDS, values)
+                )
+            ):
+                continue
             if all(value is None for value in values) and not cell.style_dirty:
                 continue
             key = tuple(_snapshot(value) for value in values)

@@ -262,6 +262,35 @@ def test_empty_candidate_and_default_metadata_getters_are_supported(
         loaded.close()
 
 
+@pytest.mark.parametrize("vertical", [None, "bottom", "top"])
+def test_indent_with_supported_vertical_alignment_roundtrips(candidate, vertical):
+    candidate.active["A1"] = "indented"
+    candidate.active["A1"].alignment = Alignment(
+        horizontal="center", vertical=vertical, indent=1
+    )
+    payload = _save_bytes(candidate)
+    for reader in (openpyxl.load_workbook, load_workbook):
+        loaded = reader(BytesIO(payload))
+        try:
+            alignment = loaded.active["A1"].alignment
+            assert alignment.horizontal == "center"
+            # Bottom is the OOXML default and need not be emitted explicitly.
+            assert (alignment.vertical or "bottom") == (vertical or "bottom")
+            assert alignment.indent == 1
+        finally:
+            loaded.close()
+
+
+def test_explicit_default_font_still_requires_supported_style(candidate, tmp_path):
+    from rpyxl._compat import default_font
+
+    # Interning may share the getter's exact default object. Explicit assignment
+    # is still an unsupported theme-font request, not a getter-only default.
+    _ = candidate.active["A1"].font
+    candidate.active["A1"].font = default_font()
+    _assert_unchanged(candidate, tmp_path, ValueError)
+
+
 def test_standalone_time_uses_supported_temporal_format(candidate):
     candidate.active["A1"] = time(12, 34, 56, 123000)
     payload = _save_bytes(candidate)
@@ -501,7 +530,7 @@ def test_non_opaque_rgb_colors_are_rejected_by_native_validator(
         ("font", Font(scheme="minor")),
         ("fill", PatternFill("darkGrid", fgColor="FF123456")),
         ("border", Border(diagonal=Side("thin", "FF123456"), diagonalUp=True)),
-        ("alignment", Alignment(horizontal="center", indent=1)),
+        ("alignment", Alignment(horizontal="center", vertical="center", indent=1)),
     ],
 )
 def test_unsupported_modeled_styles_fail_safely(candidate, tmp_path, component, value):

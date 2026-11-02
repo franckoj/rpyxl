@@ -405,7 +405,9 @@ class Workbook(metaclass=_WorkbookMeta):
                             raise NotImplementedError(
                                 "Opaque or custom style models require backend='native'"
                             )
-        records, assignments = compile_style_records(self._book)
+        records, assignments = compile_style_records(
+            self._book, pristine_defaults=self._style_defaults
+        )
         self._native._update_cell_styles(records, assignments)
         save(filename)
 
