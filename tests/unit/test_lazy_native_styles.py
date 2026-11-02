@@ -170,6 +170,37 @@ def test_load_and_style_get_never_load_metadata_or_scan_worksheets(monkeypatch):
         book.close()
 
 
+def test_native_default_style_assignment_overrides_inherited_row_style():
+    def add_row(payload):
+        root = ET.fromstring(payload)
+        data = root.find(S + "sheetData")
+        row = ET.SubElement(data, S + "row", r="2", s="1", customFormat="1")
+        for column in ("A", "B", "C"):
+            cell = ET.SubElement(row, S + "c", r=column + "2")
+            if column != "B":
+                ET.SubElement(cell, S + "v").text = "5"
+        return ET.tostring(root)
+
+    book = _load(_rewrite(_source(), "xl/worksheets/sheet1.xml", add_row))
+    try:
+        record = book._native._source_style_record(0)
+        book._native._update_cell_styles(
+            [record], [("Sheet", 2, 1, 0), ("Sheet", 2, 2, 0)]
+        )
+        for _ in range(2):
+            with ZipFile(BytesIO(_saved(book))) as archive:
+                root = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
+            cells = {
+                cell.get("r"): cell
+                for cell in root.findall(S + "sheetData/" + S + "row/" + S + "c")
+            }
+            assert cells["A2"].get("s") == "0"
+            assert cells["B2"].get("s") == "0"
+            assert cells["C2"].get("s") is None
+    finally:
+        book.close()
+
+
 def test_sparse_edit_preserves_untouched_styles_and_nested_cow(monkeypatch):
     book = _load(_source())
     monkeypatch.setattr(_metadata, "load_metadata", _forbid)

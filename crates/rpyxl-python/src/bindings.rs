@@ -1618,8 +1618,9 @@ impl PyWorkbook {
             }
             for (title, row, column, index) in assignments {
                 let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
-                sheet.get_or_create_cell(row, column)?.rich_style =
-                    Some(Arc::clone(&styles[index]));
+                let cell = sheet.get_or_create_cell(row, column)?;
+                cell.rich_style = Some(Arc::clone(&styles[index]));
+                cell.source_xf_explicit = true;
             }
             Ok(())
         })
@@ -1669,8 +1670,9 @@ impl PyWorkbook {
             }
             for (title, row, column, index) in assignments {
                 let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
-                sheet.get_or_create_cell(row, column)?.rich_style =
-                    Some(Arc::clone(&styles[index]));
+                let cell = sheet.get_or_create_cell(row, column)?;
+                cell.rich_style = Some(Arc::clone(&styles[index]));
+                cell.source_xf_explicit = true;
             }
             Ok(())
         })

@@ -2344,7 +2344,7 @@ fn write_workbook_cell(
         out,
         style,
         date_1904,
-        cell.source_xf_explicit,
+        cell.source_xf_explicit || (cell.rich_style.is_some() && cell.source_xf_index().is_none()),
     );
 }
 
