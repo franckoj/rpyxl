@@ -1700,7 +1700,7 @@ pub(crate) fn validate_style_fragment(fragment: &str, expected: &str) -> RpyxlRe
                 }
             }
             Event::Text(text) => {
-                if text.as_ref().windows(3).any(|bytes| bytes == b"]]>") {
+                if text.windows(3).any(|bytes| bytes == b"]]>") {
                     return Err(invalid());
                 }
                 let text = text.unescape().map_err(|_| invalid())?;

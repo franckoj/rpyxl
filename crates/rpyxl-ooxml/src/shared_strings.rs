@@ -10,7 +10,7 @@ pub(crate) fn decode_xml_text<'a>(
     text: &BytesText<'a>,
     decoder: Decoder,
 ) -> RpyxlResult<Cow<'a, str>> {
-    if !text.as_ref().contains(&b'\r') {
+    if !text.contains(&b'\r') {
         return text.unescape().map_err(|error| {
             RpyxlError::XmlSecurityViolation(format!("Invalid XML text: {error}"))
         });

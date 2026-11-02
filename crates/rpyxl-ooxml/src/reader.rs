@@ -654,8 +654,8 @@ impl WorksheetFraming {
             Event::CData(e) => self.safe &= self.depth != 0 && decoder.decode(e.as_ref()).is_ok(),
             Event::Comment(e) => {
                 self.safe &= decoder.decode(e.as_ref()).is_ok()
-                    && !e.as_ref().windows(2).any(|pair| pair == b"--")
-                    && !e.as_ref().ends_with(b"-");
+                    && !e.windows(2).any(|pair| pair == b"--")
+                    && !e.ends_with(b"-");
             }
             Event::Eof => destination = None,
             _ => {}

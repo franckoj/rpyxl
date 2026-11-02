@@ -354,7 +354,7 @@ fn write_normalized_cell<W: Write>(
             Event::Start(e) if e.name().as_ref() == b"f" => has_formula = true,
             Event::Start(e) if e.name().as_ref() == b"v" => in_value = true,
             Event::End(e) if e.name().as_ref() == b"v" => in_value = false,
-            Event::Text(e) if in_value => has_cache |= !e.as_ref().is_empty(),
+            Event::Text(e) if in_value => has_cache |= !e.is_empty(),
             _ => {}
         }
     }
