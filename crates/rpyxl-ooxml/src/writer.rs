@@ -1582,7 +1582,7 @@ fn is_xml_qname(name: &[u8]) -> bool {
             && chars.all(|c| start(c) || matches!(c, '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}'))
     };
     valid_part(parts.next().unwrap_or_default())
-        && parts.next().map_or(true, valid_part)
+        && parts.next().is_none_or(valid_part)
         && parts.next().is_none()
 }
 
