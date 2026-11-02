@@ -2,9 +2,9 @@
 
 **Status: post-0.2.0 experiment on `perf/rust-backends`; released defaults remain unchanged.**
 
-The first opt-in writer adapter and dev-only Calamine probe are being validated on the new branch. See [the experiment scope and commands](backend_experiment.md). Runtime constant-memory writing is deferred because the pinned writer's spill I/O can panic; the initial adapter uses standard in-memory sheets and measures their duplicate-store cost. Additional multicore changes are explicitly deferred.
+The first opt-in writer adapter and dev-only Calamine probe have initial Windows correctness/performance evidence. See [the experiment scope and commands](backend_experiment.md) and [the measured report](reports/rust_backend_experiment_2026-11-02.md). The standard-mode crate writer lost to native in all completed cases, so the default stays native. Calamine streaming is promising but not yet a same-contract read-only comparison or security-qualified production reader. Runtime constant-memory writing is deferred because the pinned writer's spill I/O can panic. Additional multicore changes remain explicitly deferred.
 
-Release the current work separately from this evaluation. This document neither changes backend selection nor claims a performance result. The 0.2.0 baseline remains experimental and incompletely compatible with openpyxl. Earlier statements that publication was not authorized in the remediation history describe those earlier validation stages, not this future implementation plan.
+Release the current work separately from this evaluation. This document does not change default backend selection; preliminary measured results are linked above and do not establish the adoption gates below. The 0.2.0 baseline remains experimental and incompletely compatible with openpyxl. Earlier statements that publication was not authorized in the remediation history describe those earlier validation stages, not this future implementation plan.
 
 ## Baseline and priorities
 

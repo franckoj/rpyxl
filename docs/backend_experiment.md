@@ -65,6 +65,14 @@ The Calamine arm uses its cell-reader stream without constructing another RPyXL 
 
 Both arms perform the existing ZIP safety precheck; timing reports distinguish that phase and include it in the overall total. This does not establish XML-security equivalence or qualify Calamine for production routing.
 
+## Measured outcome — 2026-11-02
+
+See the [full report and retained evidence](reports/rust_backend_experiment_2026-11-02.md). The exact Windows candidate wheel passed the library suite (603 passed, 1 skipped); the suite including reader-benchmark gate tests passed locally with 660 passed, 1 skipped.
+
+All 105 runs of the 2,000 × 20 writer matrix/control passed semantic validation. The crate writer was slower and used more sampled RSS than native in every completed scenario. Larger completed plain/styled cases also favored native; the larger full invocation timed out and is explicitly incomplete. **Native remains the default; no writer promotion is justified.**
+
+The dev-only Calamine probe passed 14 runs on the same 400,000-cell scalar input, with median internal total 0.239 s versus native 0.706 s and sampled RSS 9.1 MiB versus 113.0 MiB. This compares streaming with full materialization, not equivalent APIs. The new `benchmarks/compare_read_backends.py` driver records external RSS, process lifetime, lower-bound CPU, hashes and common-scalar gates. It requires an existing fixture and executable; see the report for commands.
+
 ## Next decision
 
-Collect correctness and performance evidence first. Adopt only a proven workload subset; preserve an explicit native override. Evaluate streaming after its I/O failure behavior is resolved, and consider multicore optimization only after these backend decisions.
+Profile and optimize shared style/wrapper work rather than switching writers. Evaluate a scoped Calamine read-only path against the native **read-only** contract and security controls before routing production reads. Evaluate direct streaming writing only after upstream spill I/O is fallible. Keep editable loaded-workbook preservation native and consider multicore optimization only after these single-core/backend decisions.
