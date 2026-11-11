@@ -102,7 +102,9 @@ fn write_workbook_with_styles<W: Write + Seek>(
     styles: &StyleTables,
 ) -> RpyxlResult<()> {
     let mut zip = ZipWriter::new(writer);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .compression_level(Some(1));
 
     // 1. _rels/.rels
     zip.start_file("_rels/.rels", options)
@@ -1310,7 +1312,9 @@ fn write_preserved_package<W: Write + Seek>(
     }
     let mut zip = ZipWriter::new(writer);
     zip.set_raw_comment(archive.comment().to_vec().into_boxed_slice());
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .compression_level(Some(1));
     for index in 0..archive.len() {
         let file = archive.by_index_raw(index).map_err(template_error)?;
         if let Some(xml) = replacements.get(file.name()) {
@@ -1423,7 +1427,9 @@ pub fn write_write_only_workbook<W: Write + Seek>(
     }
 
     let mut zip = ZipWriter::new(writer);
-    let options = SimpleFileOptions::default().compression_method(CompressionMethod::Deflated);
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .compression_level(Some(1));
 
     // 1. _rels/.rels
     zip.start_file("_rels/.rels", options)
