@@ -2,7 +2,6 @@
 
 import openpyxl
 import pytest
-
 import rpyxl
 
 TEXT_VALUES = [

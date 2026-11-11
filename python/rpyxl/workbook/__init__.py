@@ -38,9 +38,7 @@ class Workbook(metaclass=_WorkbookMeta):
     are not implemented. Native* exports provide explicit unwrapped access.
     """
 
-    def __init__(
-        self, write_only=False, *, _native=None, _source=None, _owns_source=False
-    ):
+    def __init__(self, write_only=False, *, _native=None, _source=None, _owns_source=False):
         self._native = (
             _native
             if _native is not None
@@ -133,9 +131,7 @@ class Workbook(metaclass=_WorkbookMeta):
                     from .._native_style_read import STYLE_FIELDS
 
                     for title, sheet in self._book.sheets.items():
-                        target = loaded.sheets.setdefault(
-                            title, MetadataSheet(title=title)
-                        )
+                        target = loaded.sheets.setdefault(title, MetadataSheet(title=title))
                         for coordinate, cell in sheet.cells.items():
                             original = target.cells.get(coordinate)
                             if original is None:
@@ -219,10 +215,7 @@ class Workbook(metaclass=_WorkbookMeta):
         return len(self.sheetnames)
 
     def _require_sheet(self, worksheet):
-        if (
-            getattr(worksheet, "parent", None) is not self
-            or worksheet.title not in self.sheetnames
-        ):
+        if getattr(worksheet, "parent", None) is not self or worksheet.title not in self.sheetnames:
             raise ValueError("Worksheet does not belong to this workbook")
 
     def index(self, worksheet):
@@ -293,22 +286,15 @@ class Workbook(metaclass=_WorkbookMeta):
         self._prepare_structure()
         metadata = worksheet._metadata
         if metadata.tables or metadata.charts:
-            raise NotImplementedError(
-                "Copying sheets with tables or charts is not supported"
-            )
+            raise NotImplementedError("Copying sheets with tables or charts is not supported")
         copied = deepcopy(metadata)
         result = self._wrap_sheet(self._native.copy_worksheet(worksheet._native))
         self._structure_changed = self._has_original
         copied.title = result.title
         book = self._ensure_metadata()
         book.sheets[result.title] = copied
-        if any(
-            name.localSheetId == self.index(worksheet)
-            for name in book.defined_names.values()
-        ):
-            warnings.warn(
-                "Sheet-local defined names are not copied", RuntimeWarning, stacklevel=2
-            )
+        if any(name.localSheetId == self.index(worksheet) for name in book.defined_names.values()):
+            warnings.warn("Sheet-local defined names are not copied", RuntimeWarning, stacklevel=2)
         return result
 
     def remove(self, worksheet):
@@ -317,8 +303,7 @@ class Workbook(metaclass=_WorkbookMeta):
         self._prepare_structure()
         title = worksheet.title
         if self._book is not None and (
-            self._book.defined_names
-            or any(s.charts for s in self._book.sheets.values())
+            self._book.defined_names or any(s.charts for s in self._book.sheets.values())
         ):
             raise NotImplementedError(
                 "Removing sheets with defined names or chart references is unsafe"
@@ -341,9 +326,7 @@ class Workbook(metaclass=_WorkbookMeta):
             return
         self._prepare_structure()
         book = self._book
-        if book is not None and (
-            book.defined_names or any(s.charts for s in book.sheets.values())
-        ):
+        if book is not None and (book.defined_names or any(s.charts for s in book.sheets.values())):
             raise NotImplementedError(
                 "Renaming sheets with defined names or chart references is unsafe"
             )
@@ -366,9 +349,7 @@ class Workbook(metaclass=_WorkbookMeta):
         if self._native_package_api:
             from .._native_styles import requires_metadata_overlay
 
-            can_preserve = (
-                not self._has_original or self._native._can_preserve_package()
-            )
+            can_preserve = not self._has_original or self._native._can_preserve_package()
             # Opt-in is not a cached proof: later edits can invalidate the
             # native package's pinned structural eligibility before any save.
             force_overlay = self._native_structure_only and not can_preserve

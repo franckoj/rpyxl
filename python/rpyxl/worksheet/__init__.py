@@ -81,10 +81,7 @@ class Worksheet:
 
     def _is_merged(self, col, row):
         # Ordinary value access must not trigger lazy read-only metadata loading.
-        if (
-            self.parent._native_style_reader is not None
-            and not self.parent._full_metadata_loaded
-        ):
+        if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
             return self._native._is_merged_cell(row, col)
         book = self.parent._book
         metadata = book.sheets.get(self.title) if book is not None else None
@@ -140,13 +137,9 @@ class Worksheet:
         """Python collection protocol alias for append_rows."""
         return self.append_rows(iterable_of_rows)
 
-    def iter_rows(
-        self, min_row=None, max_row=None, min_col=None, max_col=None, values_only=False
-    ):
+    def iter_rows(self, min_row=None, max_row=None, min_col=None, max_col=None, values_only=False):
         if self.parent.write_only:
-            raise AttributeError(
-                "'WriteOnlyWorksheet' object has no attribute 'iter_rows'"
-            )
+            raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_rows'")
         args = {
             "min_row": min_row,
             "max_row": max_row,
@@ -182,17 +175,11 @@ class Worksheet:
 
         return rows()
 
-    def iter_cols(
-        self, min_col=None, max_col=None, min_row=None, max_row=None, values_only=False
-    ):
+    def iter_cols(self, min_col=None, max_col=None, min_row=None, max_row=None, values_only=False):
         if self.parent.write_only:
-            raise AttributeError(
-                "'WriteOnlyWorksheet' object has no attribute 'iter_cols'"
-            )
+            raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_cols'")
         if self.parent.read_only:
-            raise NotImplementedError(
-                "Column iteration is unavailable in read-only mode"
-            )
+            raise NotImplementedError("Column iteration is unavailable in read-only mode")
         args = {
             "min_col": min_col,
             "max_col": max_col,
@@ -255,14 +242,10 @@ class Worksheet:
     def _range(range_string, start_row, start_column, end_row, end_column):
         if range_string is None:
             range_string = (
-                coordinate(start_column, start_row)
-                + ":"
-                + coordinate(end_column, end_row)
+                coordinate(start_column, start_row) + ":" + coordinate(end_column, end_row)
             )
         bounds = range_bounds(range_string)
-        return coordinate(bounds[0], bounds[1]) + ":" + coordinate(
-            bounds[2], bounds[3]
-        ), bounds
+        return coordinate(bounds[0], bounds[1]) + ":" + coordinate(bounds[2], bounds[3]), bounds
 
     def _clear_loaded_merged_values(self):
         # Work row-by-row over the native used bounds, not a Python cell grid.
@@ -338,17 +321,12 @@ class Worksheet:
             # Full feature metadata omits source cell styles. Inspect native
             # views without creating cells, and retain only explicit clears.
             for row in range(max(r1, self.min_row), min(r2, self.max_row) + 1):
-                for col in range(
-                    max(c1, self.min_column), min(c2, self.max_column) + 1
-                ):
+                for col in range(max(c1, self.min_column), min(c2, self.max_column) + 1):
                     if (col, row) == (c1, r1):
                         continue
                     key = coordinate(col, row)
                     native = self._native[key]
-                    if (
-                        native._source_style_id is not None
-                        or native.number_format != "General"
-                    ):
+                    if native._source_style_id is not None or native.number_format != "General":
                         native.number_format = "General"
                         metadata.cells[key] = CellMetadata(style_dirty=True)
         for key in list(metadata.cells):
@@ -389,12 +367,7 @@ class Worksheet:
         return sheet
 
     def _structural(self, method, axis, idx, amount):
-        if (
-            not isinstance(idx, int)
-            or idx < 1
-            or not isinstance(amount, int)
-            or amount < 0
-        ):
+        if not isinstance(idx, int) or idx < 1 or not isinstance(amount, int) or amount < 0:
             raise ValueError("Index must be positive and amount must be nonnegative")
         sheet = self._check_structural_metadata()
         shifted = (

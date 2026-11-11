@@ -24,9 +24,7 @@ def _source():
 
 
 def _load(data):
-    assert hasattr(NativeWorkbook, "_enable_plain_structure"), (
-        "Rebuild the native wheel"
-    )
+    assert hasattr(NativeWorkbook, "_enable_plain_structure"), "Rebuild the native wheel"
     return load_workbook(BytesIO(data))
 
 
@@ -103,9 +101,7 @@ def test_plain_operations_avoid_python_metadata_and_preserve_output(
         control.close()
 
 
-def test_repeated_structural_edits_then_rich_metadata_use_fallback(
-    tmp_path, monkeypatch
-):
+def test_repeated_structural_edits_then_rich_metadata_use_fallback(tmp_path, monkeypatch):
     data = _source()
     book = _load(data)
     control = openpyxl.load_workbook(BytesIO(data))
@@ -140,9 +136,7 @@ def test_repeated_structural_edits_then_rich_metadata_use_fallback(
         control.close()
 
 
-@pytest.mark.parametrize(
-    "feature", ["dimension", "comment", "freeze", "formula", "merge"]
-)
+@pytest.mark.parametrize("feature", ["dimension", "comment", "freeze", "formula", "merge"])
 def test_rich_sources_do_not_opt_in(feature):
     control = openpyxl.load_workbook(BytesIO(_source()))
     if feature == "dimension":

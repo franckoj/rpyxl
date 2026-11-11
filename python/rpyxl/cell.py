@@ -53,9 +53,7 @@ class Cell:
         if sheet._number_formats is None:
             from ._compat import read_number_formats
 
-            sheet._number_formats = read_number_formats(
-                sheet.parent._source, sheet.title
-            )
+            sheet._number_formats = read_number_formats(sheet.parent._source, sheet.title)
         return sheet._number_formats.get(self.coordinate, "General")
 
     @number_format.setter
@@ -82,9 +80,7 @@ class Cell:
     @comment.setter
     def comment(self, value):
         self.parent._check_writable()
-        metadata = self.parent._metadata.cells.setdefault(
-            self.coordinate, CellMetadata()
-        )
+        metadata = self.parent._metadata.cells.setdefault(self.coordinate, CellMetadata())
         metadata.comment = deepcopy(value)
         # Clear old native annotations; the sidecar is authoritative (and can
         # represent authors and richer hyperlink fields that native cannot).
@@ -92,9 +88,7 @@ class Cell:
 
     @property
     def hyperlink(self):
-        return self.parent._metadata.cells.get(
-            self.coordinate, CellMetadata()
-        ).hyperlink
+        return self.parent._metadata.cells.get(self.coordinate, CellMetadata()).hyperlink
 
     @hyperlink.setter
     def hyperlink(self, value):
@@ -105,9 +99,7 @@ class Cell:
             value = deepcopy(value)
             if value is not None:
                 value.ref = self.coordinate
-        self.parent._metadata.cells.setdefault(
-            self.coordinate, CellMetadata()
-        ).hyperlink = value
+        self.parent._metadata.cells.setdefault(self.coordinate, CellMetadata()).hyperlink = value
         self._native.hyperlink = None
         if value is not None and self.value is None:
             self.value = value.target or value.location
@@ -127,8 +119,7 @@ class Cell:
             from ._compat import STYLE_DEFAULTS
 
             if any(
-                getattr(metadata, name) is not None
-                and getattr(metadata, name) != default()
+                getattr(metadata, name) is not None and getattr(metadata, name) != default()
                 for name, default in STYLE_DEFAULTS.items()
             ):
                 return True

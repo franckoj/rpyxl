@@ -141,9 +141,7 @@ def test_compile_original_xml_is_structural_and_preserves_unknown_fields(
     first, _ = compile_style_records(metadata_book)
     assert len(first) == 1
     assert len(serialized) == 2
-    assert (
-        ET.fromstring(first[0][0]).find(_metadata.q("extension")).get("value") == "one"
-    )
+    assert ET.fromstring(first[0][0]).find(_metadata.q("extension")).get("value") == "one"
     assert ET.fromstring(first[0][3]).get("custom") == "yes"
     font._xml.find(_metadata.q("extension")).set("value", "two")
     second, _ = compile_style_records(metadata_book)
@@ -263,9 +261,7 @@ def test_overlay_non_style_features(metadata_book, feature):
         ("sheet", "future_feature", {}),
     ],
 )
-def test_overlay_retains_snapshots_and_unknown_metadata(
-    metadata_book, target, attribute, value
-):
+def test_overlay_retains_snapshots_and_unknown_metadata(metadata_book, target, attribute, value):
     sheet = metadata_book.sheets["Sheet"]
     targets = {
         "book": metadata_book,
@@ -301,9 +297,7 @@ def test_style_only_save_native_integration(monkeypatch):
     sheet["A1"] = 12.5
     sheet["A1"].number_format = '0.0000 "units"'
     sheet["A1"].font = Font(bold=True, color="123456")
-    sheet["A1"].fill = PatternFill(
-        "solid", fgColor="80112233", bgColor=Color(indexed=5)
-    )
+    sheet["A1"].fill = PatternFill("solid", fgColor="80112233", bgColor=Color(indexed=5))
     sheet["A1"].border = Border(left=Side("thin", Color(theme=2, tint=0.25)))
     sheet["A1"].alignment = Alignment(wrap_text=True, horizontal="center")
     sheet["A1"].protection = Protection(locked=False, hidden=True)
@@ -435,9 +429,7 @@ def test_overlay_retains_native_styles_without_rebuilding_them(monkeypatch):
     metadata.sheets["Sheet"].cells["A1"].comment = Comment("Keep styles", "Reviewer")
 
     def unexpected(*args, **kwargs):
-        raise AssertionError(
-            "Cell styles already serialized by Rust must not be rebuilt"
-        )
+        raise AssertionError("Cell styles already serialized by Rust must not be rebuilt")
 
     monkeypatch.setattr(_metadata._Styles, "overlay", unexpected)
     output = BytesIO()

@@ -7,19 +7,21 @@ Comparing:
 3. rpyxl.append_rows() (batch engine)
 """
 
+import gc
 import os
 import sys
 import time
-import gc
-import psutil
-from tabulate import tabulate
 
 import openpyxl
+import psutil
 import rpyxl
+from tabulate import tabulate
 
 print("====================================================================")
-print(f" BENCHMARK: SINGLE-ROW APPEND vs BATCH APPEND_ROWS")
-print(f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}")
+print(" BENCHMARK: SINGLE-ROW APPEND vs BATCH APPEND_ROWS")
+print(
+    f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}"
+)
 print(f" CPU Cores: {psutil.cpu_count(logical=True)}")
 print("====================================================================\n")
 
@@ -27,13 +29,21 @@ OUTPUT_DIR = "/tmp/batch_bench_data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 SCALES = [
-    ("10,000 rows", 10000, 10),      # 100,000 cells
-    ("50,000 rows", 50000, 10),      # 500,000 cells
-    ("100,000 rows", 100000, 10),    # 1,000,000 cells
+    ("10,000 rows", 10000, 10),  # 100,000 cells
+    ("50,000 rows", 50000, 10),  # 500,000 cells
+    ("100,000 rows", 100000, 10),  # 1,000,000 cells
 ]
 
+
 def make_rows(n_rows, n_cols):
-    return [[f"R{r}_C{c}" if c % 3 == 0 else (r * c if c % 2 == 0 else r * 1.5) for c in range(1, n_cols + 1)] for r in range(1, n_rows + 1)]
+    return [
+        [
+            f"R{r}_C{c}" if c % 3 == 0 else (r * c if c % 2 == 0 else r * 1.5)
+            for c in range(1, n_cols + 1)
+        ]
+        for r in range(1, n_rows + 1)
+    ]
+
 
 results = []
 
@@ -75,32 +85,36 @@ for label, n_rows, n_cols in SCALES:
     speedup_vs_single = t_append_px / t_batch_px if t_batch_px > 0 else 0
     throughput = total_cells / t_batch_px if t_batch_px > 0 else 0
 
-    results.append([
-        f"{label} ({total_cells:,} cells)",
-        f"{t_append_ox:.4f}s",
-        f"{t_append_px:.4f}s",
-        f"{t_batch_px:.4f}s",
-        f"{speedup_vs_single:.2f}x faster",
-        f"{speedup_vs_ox:.2f}x faster",
-        f"{throughput:,.0f} cells/s"
-    ])
+    results.append(
+        [
+            f"{label} ({total_cells:,} cells)",
+            f"{t_append_ox:.4f}s",
+            f"{t_append_px:.4f}s",
+            f"{t_batch_px:.4f}s",
+            f"{speedup_vs_single:.2f}x faster",
+            f"{speedup_vs_ox:.2f}x faster",
+            f"{throughput:,.0f} cells/s",
+        ]
+    )
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print(" INGESTION SPEED RESULTS: SINGLE-ROW vs BATCH APPEND")
-print("="*80)
-print(tabulate(
-    results,
-    headers=[
-        "Workload Scale",
-        "openpyxl (Single)",
-        "rpyxl (Single)",
-        "rpyxl (Batch append_rows)",
-        "Batch vs Single rpyxl",
-        "Batch vs openpyxl",
-        "Batch Ingestion Throughput"
-    ],
-    tablefmt="github"
-))
+print("=" * 80)
+print(
+    tabulate(
+        results,
+        headers=[
+            "Workload Scale",
+            "openpyxl (Single)",
+            "rpyxl (Single)",
+            "rpyxl (Batch append_rows)",
+            "Batch vs Single rpyxl",
+            "Batch vs openpyxl",
+            "Batch Ingestion Throughput",
+        ],
+        tablefmt="github",
+    )
+)
 
 # Test Write-Only Streaming with batch append
 print("\n--- Testing Streaming Write-Only with Batch Append (1,000,000 cells) ---")
@@ -127,8 +141,23 @@ wb.save(out_wo_batch)
 wb.close()
 t_wo_batch = time.perf_counter() - t0
 
-print(tabulate([
-    ["Write-Only Single Append Loop", f"{t_wo_single:.4f}s", f"{1000000 / t_wo_single:,.0f} cells/s", "1.00x"],
-    ["Write-Only Batch append_rows()", f"{t_wo_batch:.4f}s", f"{1000000 / t_wo_batch:,.0f} cells/s", f"{t_wo_single / t_wo_batch:.2f}x faster"]
-], headers=["Streaming Write Mode (1M cells)", "Time", "Throughput", "Gain"], tablefmt="github"))
-
+print(
+    tabulate(
+        [
+            [
+                "Write-Only Single Append Loop",
+                f"{t_wo_single:.4f}s",
+                f"{1000000 / t_wo_single:,.0f} cells/s",
+                "1.00x",
+            ],
+            [
+                "Write-Only Batch append_rows()",
+                f"{t_wo_batch:.4f}s",
+                f"{1000000 / t_wo_batch:,.0f} cells/s",
+                f"{t_wo_single / t_wo_batch:.2f}x faster",
+            ],
+        ],
+        headers=["Streaming Write Mode (1M cells)", "Time", "Throughput", "Gain"],
+        tablefmt="github",
+    )
+)

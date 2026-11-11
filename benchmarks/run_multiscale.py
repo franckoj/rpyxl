@@ -27,6 +27,7 @@ import time
 from datetime import datetime
 
 import matplotlib
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import psutil
@@ -179,6 +180,7 @@ def ensure_scale_file(rows, cols):
 # Benchmark Routines
 # -----------------------------------------------------------------------------
 
+
 def bench_standard_save(lib_name, rows, cols):
     if lib_name == "openpyxl":
         import openpyxl
@@ -188,8 +190,11 @@ def bench_standard_save(lib_name, rows, cols):
                 wb = openpyxl.Workbook()
                 ws = wb.active
                 for r in range(1, rows + 1):
-                    ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
+                    ws.append(
+                        [f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5)
+                    )
                 wb.save(tmp.name)
+
         return _run
     else:
         import rpyxl
@@ -199,8 +204,11 @@ def bench_standard_save(lib_name, rows, cols):
                 wb = rpyxl.Workbook()
                 ws = wb.active
                 for r in range(1, rows + 1):
-                    ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
+                    ws.append(
+                        [f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5)
+                    )
                 wb.save(tmp.name)
+
         return _run
 
 
@@ -213,8 +221,11 @@ def bench_write_only_save(lib_name, rows, cols):
                 wb = openpyxl.Workbook(write_only=True)
                 ws = wb.create_sheet("Stream")
                 for r in range(1, rows + 1):
-                    ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
+                    ws.append(
+                        [f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5)
+                    )
                 wb.save(tmp.name)
+
         return _run
     else:
         import rpyxl
@@ -224,8 +235,11 @@ def bench_write_only_save(lib_name, rows, cols):
                 wb = rpyxl.Workbook(write_only=True)
                 ws = wb.create_sheet("Stream")
                 for r in range(1, rows + 1):
-                    ws.append([f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5))
+                    ws.append(
+                        [f"Item_{r}", r * 10, r * 1.5, r % 2 == 0, "Test string"] * (cols // 5)
+                    )
                 wb.save(tmp.name)
+
         return _run
 
 
@@ -241,6 +255,7 @@ def bench_standard_load(lib_name, filepath):
                 cnt += len(row)
             wb.close()
             return cnt
+
         return _run
     elif lib_name == "rpyxl":
         import rpyxl
@@ -253,6 +268,7 @@ def bench_standard_load(lib_name, filepath):
                 cnt += len(row)
             wb.close()
             return cnt
+
         return _run
     elif lib_name == "calamine":
         import python_calamine
@@ -264,6 +280,7 @@ def bench_standard_load(lib_name, filepath):
             for row in sheet.to_python():
                 cnt += len(row)
             return cnt
+
         return _run
 
 
@@ -279,6 +296,7 @@ def bench_read_only_stream(lib_name, filepath):
                 cnt += len(row)
             wb.close()
             return cnt
+
         return _run
     elif lib_name == "rpyxl":
         import rpyxl
@@ -290,12 +308,14 @@ def bench_read_only_stream(lib_name, filepath):
                 for row in ws.iter_rows(values_only=True):
                     cnt += len(row)
                 return cnt
+
         return _run
 
 
 # -----------------------------------------------------------------------------
 # Chart Generation
 # -----------------------------------------------------------------------------
+
 
 def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     os.makedirs(output_dir, exist_ok=True)
@@ -309,19 +329,40 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     x = range(len(scale_labels))
     width = 0.35
 
-    plt.bar([i - width/2 for i in x], op_std_times, width, label="openpyxl (Standard)", color="#E53935")
-    plt.bar([i + width/2 for i in x], px_std_times, width, label="RPyXL (Standard)", color="#1E88E5")
+    plt.bar(
+        [i - width / 2 for i in x],
+        op_std_times,
+        width,
+        label="openpyxl (Standard)",
+        color="#E53935",
+    )
+    plt.bar(
+        [i + width / 2 for i in x], px_std_times, width, label="RPyXL (Standard)", color="#1E88E5"
+    )
 
     plt.yscale("log")
     plt.ylabel("Wall Time in Seconds (Log Scale)", fontsize=11)
-    plt.title("Standard In-Memory Save Time Across Scales (Log Scale: Lower is Better)", fontsize=13, fontweight="bold")
+    plt.title(
+        "Standard In-Memory Save Time Across Scales (Log Scale: Lower is Better)",
+        fontsize=13,
+        fontweight="bold",
+    )
     plt.xticks(x, scale_labels, fontsize=10)
     plt.grid(axis="y", linestyle="--", alpha=0.5)
     plt.legend(fontsize=10)
 
     for i in x:
         sp = op_std_times[i] / px_std_times[i] if px_std_times[i] > 0 else 1.0
-        plt.text(i + width/2, px_std_times[i] * 1.15, f"{sp:.1f}x\nfaster", ha="center", va="bottom", fontsize=9, fontweight="bold", color="#0D47A1")
+        plt.text(
+            i + width / 2,
+            px_std_times[i] * 1.15,
+            f"{sp:.1f}x\nfaster",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+            color="#0D47A1",
+        )
 
     plt.tight_layout()
     plt.savefig(f"{output_dir}/phase5_scale_writing_time.png", dpi=200)
@@ -332,19 +373,40 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     op_wo_times = [results_by_scale[s["name"]]["write_only_openpyxl"]["median_sec"] for s in SCALES]
     px_wo_times = [results_by_scale[s["name"]]["write_only_rpyxl"]["median_sec"] for s in SCALES]
 
-    plt.bar([i - width/2 for i in x], op_wo_times, width, label="openpyxl (write_only)", color="#FB8C00")
-    plt.bar([i + width/2 for i in x], px_wo_times, width, label="RPyXL (write_only)", color="#43A047")
+    plt.bar(
+        [i - width / 2 for i in x],
+        op_wo_times,
+        width,
+        label="openpyxl (write_only)",
+        color="#FB8C00",
+    )
+    plt.bar(
+        [i + width / 2 for i in x], px_wo_times, width, label="RPyXL (write_only)", color="#43A047"
+    )
 
     plt.yscale("log")
     plt.ylabel("Wall Time in Seconds (Log Scale)", fontsize=11)
-    plt.title("Streaming Write-Only Save Time Across Scales (Log Scale: Lower is Better)", fontsize=13, fontweight="bold")
+    plt.title(
+        "Streaming Write-Only Save Time Across Scales (Log Scale: Lower is Better)",
+        fontsize=13,
+        fontweight="bold",
+    )
     plt.xticks(x, scale_labels, fontsize=10)
     plt.grid(axis="y", linestyle="--", alpha=0.5)
     plt.legend(fontsize=10)
 
     for i in x:
         sp = op_wo_times[i] / px_wo_times[i] if px_wo_times[i] > 0 else 1.0
-        plt.text(i + width/2, px_wo_times[i] * 1.15, f"{sp:.1f}x\nfaster", ha="center", va="bottom", fontsize=9, fontweight="bold", color="#1B5E20")
+        plt.text(
+            i + width / 2,
+            px_wo_times[i] * 1.15,
+            f"{sp:.1f}x\nfaster",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+            color="#1B5E20",
+        )
 
     plt.tight_layout()
     plt.savefig(f"{output_dir}/phase5_scale_write_only_time.png", dpi=200)
@@ -363,14 +425,25 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
 
     plt.yscale("log")
     plt.ylabel("Wall Time in Seconds (Log Scale)", fontsize=11)
-    plt.title("Reading Execution Time Across Scales (Lower is Better)", fontsize=13, fontweight="bold")
+    plt.title(
+        "Reading Execution Time Across Scales (Lower is Better)", fontsize=13, fontweight="bold"
+    )
     plt.xticks(x, scale_labels, fontsize=10)
     plt.grid(axis="y", linestyle="--", alpha=0.5)
     plt.legend(fontsize=10)
 
     for i in x:
         sp = op_ro_times[i] / px_ro_times[i] if px_ro_times[i] > 0 else 1.0
-        plt.text(i, px_ro_times[i] * 1.15, f"{sp:.1f}x", ha="center", va="bottom", fontsize=9, fontweight="bold", color="#0D47A1")
+        plt.text(
+            i,
+            px_ro_times[i] * 1.15,
+            f"{sp:.1f}x",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+            color="#0D47A1",
+        )
 
     plt.tight_layout()
     plt.savefig(f"{output_dir}/phase5_scale_reading_time.png", dpi=200)
@@ -381,8 +454,22 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     op_rss = [results_by_scale[s["name"]]["std_save_openpyxl"]["peak_rss_mb"] for s in SCALES]
     px_rss = [results_by_scale[s["name"]]["std_save_rpyxl"]["peak_rss_mb"] for s in SCALES]
 
-    plt.plot(scale_labels, op_rss, marker="o", linewidth=2.5, color="#E53935", label="openpyxl Peak RSS (MB)")
-    plt.plot(scale_labels, px_rss, marker="s", linewidth=2.5, color="#1E88E5", label="RPyXL Peak RSS (MB)")
+    plt.plot(
+        scale_labels,
+        op_rss,
+        marker="o",
+        linewidth=2.5,
+        color="#E53935",
+        label="openpyxl Peak RSS (MB)",
+    )
+    plt.plot(
+        scale_labels,
+        px_rss,
+        marker="s",
+        linewidth=2.5,
+        color="#1E88E5",
+        label="RPyXL Peak RSS (MB)",
+    )
 
     plt.ylabel("Peak RSS Memory (MB)", fontsize=11)
     plt.title("Peak RAM Usage Scaling (Lower is Better)", fontsize=13, fontweight="bold")
@@ -390,8 +477,24 @@ def generate_scale_charts(results_by_scale, output_dir="benchmarks/reports"):
     plt.legend(fontsize=10)
 
     for i, s in enumerate(scale_labels):
-        plt.annotate(f"{op_rss[i]:.1f} MB", (s, op_rss[i]), textcoords="offset points", xytext=(0, 8), ha="center", fontsize=9, color="#E53935")
-        plt.annotate(f"{px_rss[i]:.1f} MB", (s, px_rss[i]), textcoords="offset points", xytext=(0, -14), ha="center", fontsize=9, color="#1E88E5")
+        plt.annotate(
+            f"{op_rss[i]:.1f} MB",
+            (s, op_rss[i]),
+            textcoords="offset points",
+            xytext=(0, 8),
+            ha="center",
+            fontsize=9,
+            color="#E53935",
+        )
+        plt.annotate(
+            f"{px_rss[i]:.1f} MB",
+            (s, px_rss[i]),
+            textcoords="offset points",
+            xytext=(0, -14),
+            ha="center",
+            fontsize=9,
+            color="#1E88E5",
+        )
 
     plt.tight_layout()
     plt.savefig(f"{output_dir}/phase5_scale_memory.png", dpi=200)
@@ -404,7 +507,9 @@ def run_all_scales():
     print("================================================================================")
 
     env = get_environment_info()
-    print(f"OS: {env['os']} ({env['machine']}) | Logical Cores: {env['cpu_count_logical']} | RAM: {env['total_ram_mb']} MB")
+    print(
+        f"OS: {env['os']} ({env['machine']}) | Logical Cores: {env['cpu_count_logical']} | RAM: {env['total_ram_mb']} MB"
+    )
 
     results_by_scale = {}
     summary_rows = []
@@ -415,9 +520,9 @@ def run_all_scales():
         cols = s["cols"]
         cells = s["cells"]
 
-        print(f"\n--------------------------------------------------------------------------------")
+        print("\n--------------------------------------------------------------------------------")
         print(f">>> Scale: {scale_name} ({rows:,} rows x {cols} cols = {cells:,} cells)")
-        print(f"--------------------------------------------------------------------------------")
+        print("--------------------------------------------------------------------------------")
 
         # 1. Prepare benchmark XLSX file for reader tests
         bench_file = ensure_scale_file(rows, cols)
@@ -457,37 +562,47 @@ def run_all_scales():
         }
 
         # Compute speedups
-        save_sp = m_save_op["median_sec"] / m_save_px["median_sec"] if m_save_px["median_sec"] > 0 else 1.0
+        save_sp = (
+            m_save_op["median_sec"] / m_save_px["median_sec"]
+            if m_save_px["median_sec"] > 0
+            else 1.0
+        )
         wo_sp = m_wo_op["median_sec"] / m_wo_px["median_sec"] if m_wo_px["median_sec"] > 0 else 1.0
-        load_sp = m_load_op["median_sec"] / m_load_px["median_sec"] if m_load_px["median_sec"] > 0 else 1.0
+        load_sp = (
+            m_load_op["median_sec"] / m_load_px["median_sec"]
+            if m_load_px["median_sec"] > 0
+            else 1.0
+        )
         ro_sp = m_ro_op["median_sec"] / m_ro_px["median_sec"] if m_ro_px["median_sec"] > 0 else 1.0
 
         px_save_throughput = cells / m_save_px["median_sec"] if m_save_px["median_sec"] > 0 else 0
         px_wo_throughput = cells / m_wo_px["median_sec"] if m_wo_px["median_sec"] > 0 else 0
         px_ro_throughput = cells / m_ro_px["median_sec"] if m_ro_px["median_sec"] > 0 else 0
 
-        summary_rows.append({
-            "Scale": scale_name,
-            "Cells": f"{cells:,}",
-            "Save_openpyxl": f"{m_save_op['median_sec']:.4f}s",
-            "Save_rpyxl": f"{m_save_px['median_sec']:.4f}s",
-            "Save_Speedup": f"{save_sp:.2f}x",
-            "Save_Throughput": f"{px_save_throughput:,.0f} cells/s",
-            "WO_openpyxl": f"{m_wo_op['median_sec']:.4f}s",
-            "WO_rpyxl": f"{m_wo_px['median_sec']:.4f}s",
-            "WO_Speedup": f"{wo_sp:.2f}x",
-            "WO_Throughput": f"{px_wo_throughput:,.0f} cells/s",
-            "Load_openpyxl": f"{m_load_op['median_sec']:.4f}s",
-            "Load_rpyxl": f"{m_load_px['median_sec']:.4f}s",
-            "Load_Speedup": f"{load_sp:.2f}x",
-            "RO_openpyxl": f"{m_ro_op['median_sec']:.4f}s",
-            "RO_rpyxl": f"{m_ro_px['median_sec']:.4f}s",
-            "RO_Speedup": f"{ro_sp:.2f}x",
-            "RO_Throughput": f"{px_ro_throughput:,.0f} cells/s",
-            "RAM_openpyxl": f"{m_save_op['peak_rss_mb']:.1f} MB",
-            "RAM_rpyxl": f"{m_save_px['peak_rss_mb']:.1f} MB",
-            "CPU_util_rpyxl": f"{m_save_px['cpu_util_pct']:.0f}%",
-        })
+        summary_rows.append(
+            {
+                "Scale": scale_name,
+                "Cells": f"{cells:,}",
+                "Save_openpyxl": f"{m_save_op['median_sec']:.4f}s",
+                "Save_rpyxl": f"{m_save_px['median_sec']:.4f}s",
+                "Save_Speedup": f"{save_sp:.2f}x",
+                "Save_Throughput": f"{px_save_throughput:,.0f} cells/s",
+                "WO_openpyxl": f"{m_wo_op['median_sec']:.4f}s",
+                "WO_rpyxl": f"{m_wo_px['median_sec']:.4f}s",
+                "WO_Speedup": f"{wo_sp:.2f}x",
+                "WO_Throughput": f"{px_wo_throughput:,.0f} cells/s",
+                "Load_openpyxl": f"{m_load_op['median_sec']:.4f}s",
+                "Load_rpyxl": f"{m_load_px['median_sec']:.4f}s",
+                "Load_Speedup": f"{load_sp:.2f}x",
+                "RO_openpyxl": f"{m_ro_op['median_sec']:.4f}s",
+                "RO_rpyxl": f"{m_ro_px['median_sec']:.4f}s",
+                "RO_Speedup": f"{ro_sp:.2f}x",
+                "RO_Throughput": f"{px_ro_throughput:,.0f} cells/s",
+                "RAM_openpyxl": f"{m_save_op['peak_rss_mb']:.1f} MB",
+                "RAM_rpyxl": f"{m_save_px['peak_rss_mb']:.1f} MB",
+                "CPU_util_rpyxl": f"{m_save_px['cpu_util_pct']:.0f}%",
+            }
+        )
 
     # Generate charts
     print("\nGenerating Phase 5 comparison charts...")
@@ -499,19 +614,29 @@ def run_all_scales():
     with open(md_path, "w") as f:
         f.write("# RPyXL Phase 5 Multi-Scale Benchmark Report\n\n")
         f.write(f"Generated at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
-        f.write(f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n")
+        f.write(
+            f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n"
+        )
 
         f.write("## 1. Multi-Scale Execution Summary\n\n")
-        f.write("| Scale | Cells | Std Save openpyxl | Std Save RPyXL | Save Speedup | Write-Only openpyxl | Write-Only RPyXL | WO Speedup | Read openpyxl | Read RPyXL | Read Speedup | RPyXL Peak RAM | openpyxl Peak RAM |\n")
+        f.write(
+            "| Scale | Cells | Std Save openpyxl | Std Save RPyXL | Save Speedup | Write-Only openpyxl | Write-Only RPyXL | WO Speedup | Read openpyxl | Read RPyXL | Read Speedup | RPyXL Peak RAM | openpyxl Peak RAM |\n"
+        )
         f.write("|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
         for r in summary_rows:
-            f.write(f"| {r['Scale']} | {r['Cells']} | {r['Save_openpyxl']} | {r['Save_rpyxl']} | **{r['Save_Speedup']}** | {r['WO_openpyxl']} | {r['WO_rpyxl']} | **{r['WO_Speedup']}** | {r['RO_openpyxl']} | {r['RO_rpyxl']} | **{r['RO_Speedup']}** | {r['RAM_rpyxl']} | {r['RAM_openpyxl']} |\n")
+            f.write(
+                f"| {r['Scale']} | {r['Cells']} | {r['Save_openpyxl']} | {r['Save_rpyxl']} | **{r['Save_Speedup']}** | {r['WO_openpyxl']} | {r['WO_rpyxl']} | **{r['WO_Speedup']}** | {r['RO_openpyxl']} | {r['RO_rpyxl']} | **{r['RO_Speedup']}** | {r['RAM_rpyxl']} | {r['RAM_openpyxl']} |\n"
+            )
 
         f.write("\n## 2. Detailed Throughput & Performance\n\n")
-        f.write("| Scale | Standard Save Throughput | Write-Only Throughput | Read-Only Streaming Throughput | RPyXL CPU Utilization |\n")
+        f.write(
+            "| Scale | Standard Save Throughput | Write-Only Throughput | Read-Only Streaming Throughput | RPyXL CPU Utilization |\n"
+        )
         f.write("|---|---|---|---|---|\n")
         for r in summary_rows:
-            f.write(f"| {r['Scale']} | **{r['Save_Throughput']}** | **{r['WO_Throughput']}** | **{r['RO_Throughput']}** | {r['CPU_util_rpyxl']} |\n")
+            f.write(
+                f"| {r['Scale']} | **{r['Save_Throughput']}** | **{r['WO_Throughput']}** | **{r['RO_Throughput']}** | {r['CPU_util_rpyxl']} |\n"
+            )
 
         f.write("\n## 3. Visual Performance Comparisons\n\n")
         f.write("### 3.1 Standard In-Memory Save Time Across Scales\n")
@@ -525,10 +650,12 @@ def run_all_scales():
 
     # Save JSON report
     with open("benchmarks/reports/phase5_multiscale_results.json", "w") as f:
-        json.dump({"environment": env, "results": results_by_scale, "summary": summary_rows}, f, indent=2)
+        json.dump(
+            {"environment": env, "results": results_by_scale, "summary": summary_rows}, f, indent=2
+        )
 
     print("\n================================================================================")
-    print(f"Phase 5 Multi-Scale Benchmarks Completed Successfully!")
+    print("Phase 5 Multi-Scale Benchmarks Completed Successfully!")
     print(f"Report: {md_path}")
     print("Charts: benchmarks/reports/phase5_scale_*.png")
     print("JSON:   benchmarks/reports/phase5_multiscale_results.json")

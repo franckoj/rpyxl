@@ -4,45 +4,56 @@ Deep-Dive Benchmark: Styles Write Speed & Memory Consumption
 openpyxl (3.1.5) vs rpyxl (0.2.0)
 """
 
+import gc
 import os
 import sys
 import time
-import gc
-import psutil
-from tabulate import tabulate
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
+import psutil
 import rpyxl
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from rpyxl.styles import (
+    Alignment as RAlignment,
+)
+from rpyxl.styles import (
+    Border as RBorder,
+)
 from rpyxl.styles import (
     Font as RFont,
+)
+from rpyxl.styles import (
     PatternFill as RPatternFill,
-    Alignment as RAlignment,
-    Border as RBorder,
+)
+from rpyxl.styles import (
     Side as RSide,
 )
+from tabulate import tabulate
 
 print("====================================================================")
-print(f" STYLES WRITE SPEED & MEMORY CONSUMPTION BENCHMARK")
-print(f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}")
+print(" STYLES WRITE SPEED & MEMORY CONSUMPTION BENCHMARK")
+print(
+    f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}"
+)
 print(f" Platform: {sys.platform} | CPU Cores: {psutil.cpu_count(logical=True)}")
 print("====================================================================\n")
 
 OUTPUT_DIR = "/tmp/styles_bench_data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+
 def measure_rss_mb():
     gc.collect()
     return psutil.Process().memory_info().rss / (1024 * 1024)
+
 
 # ==============================================================================
 # Workload Configurations
 # ==============================================================================
 STYLE_SCALES = [
-    ("Small", 5000),      # 5,000 rows x 5 cols = 25,000 styled cells
-    ("Medium", 20000),    # 20,000 rows x 5 cols = 100,000 styled cells
-    ("Large", 50000),     # 50,000 rows x 5 cols = 250,000 styled cells
+    ("Small", 5000),  # 5,000 rows x 5 cols = 25,000 styled cells
+    ("Medium", 20000),  # 20,000 rows x 5 cols = 100,000 styled cells
+    ("Large", 50000),  # 50,000 rows x 5 cols = 250,000 styled cells
 ]
 
 headers = ["Account Code", "Posting Date", "Debit ($)", "Credit ($)", "Net Position ($)"]
@@ -99,14 +110,16 @@ for label, n_rows in STYLE_SCALES:
 
     # Data Rows
     for r in range(2, n_rows + 2):
-        ws_ox.append([
-            f"ACC-{r:06d}",
-            "2026-11-11",
-            round(r * 12.5, 2),
-            round(r * 8.25, 2),
-            round(r * 4.25, 2)
-        ])
-        is_even = (r % 2 == 0)
+        ws_ox.append(
+            [
+                f"ACC-{r:06d}",
+                "2026-11-11",
+                round(r * 12.5, 2),
+                round(r * 8.25, 2),
+                round(r * 4.25, 2),
+            ]
+        )
+        is_even = r % 2 == 0
         # Apply styles to row
         for col_idx in range(1, 6):
             c = ws_ox.cell(row=r, column=col_idx)
@@ -159,14 +172,16 @@ for label, n_rows in STYLE_SCALES:
 
     # Data Rows
     for r in range(2, n_rows + 2):
-        ws_px.append([
-            f"ACC-{r:06d}",
-            "2026-11-11",
-            round(r * 12.5, 2),
-            round(r * 8.25, 2),
-            round(r * 4.25, 2)
-        ])
-        is_even = (r % 2 == 0)
+        ws_px.append(
+            [
+                f"ACC-{r:06d}",
+                "2026-11-11",
+                round(r * 12.5, 2),
+                round(r * 8.25, 2),
+                round(r * 4.25, 2),
+            ]
+        )
+        is_even = r % 2 == 0
         # Apply styles to row
         for col_idx in range(1, 6):
             c = ws_px.cell(row=r, column=col_idx)
@@ -202,68 +217,82 @@ for label, n_rows in STYLE_SCALES:
     save_speedup = t_save_ox / t_save_px if t_save_px > 0 else 0
     styled_throughput = n_cells / t_total_px if t_total_px > 0 else 0
 
-    results.append({
-        "scale": f"{label} ({n_cells:,} cells)",
-        "ox_total": t_total_ox,
-        "px_total": t_total_px,
-        "speedup": total_speedup,
-        "ox_save": t_save_ox,
-        "px_save": t_save_px,
-        "save_speedup": save_speedup,
-        "ox_rss": delta_rss_ox,
-        "px_rss": delta_rss_px,
-        "throughput": styled_throughput,
-        "ox_size": ox_size_kb,
-        "px_size": px_size_kb,
-    })
+    results.append(
+        {
+            "scale": f"{label} ({n_cells:,} cells)",
+            "ox_total": t_total_ox,
+            "px_total": t_total_px,
+            "speedup": total_speedup,
+            "ox_save": t_save_ox,
+            "px_save": t_save_px,
+            "save_speedup": save_speedup,
+            "ox_rss": delta_rss_ox,
+            "px_rss": delta_rss_px,
+            "throughput": styled_throughput,
+            "ox_size": ox_size_kb,
+            "px_size": px_size_kb,
+        }
+    )
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print(" STYLES BENCHMARK SUMMARY TABLE")
-print("="*80)
+print("=" * 80)
 
 table_data = []
 for r in results:
-    table_data.append([
-        r["scale"],
-        f"{r['ox_total']:.3f}s",
-        f"{r['px_total']:.3f}s",
-        f"{r['speedup']:.2f}x",
-        f"{r['ox_save']:.3f}s",
-        f"{r['px_save']:.3f}s",
-        f"{r['save_speedup']:.2f}x",
-        f"{r['ox_rss']:+.1f} MB",
-        f"{r['px_rss']:+.1f} MB",
-        f"{r['throughput']:,.0f} c/s"
-    ])
+    table_data.append(
+        [
+            r["scale"],
+            f"{r['ox_total']:.3f}s",
+            f"{r['px_total']:.3f}s",
+            f"{r['speedup']:.2f}x",
+            f"{r['ox_save']:.3f}s",
+            f"{r['px_save']:.3f}s",
+            f"{r['save_speedup']:.2f}x",
+            f"{r['ox_rss']:+.1f} MB",
+            f"{r['px_rss']:+.1f} MB",
+            f"{r['throughput']:,.0f} c/s",
+        ]
+    )
 
-print(tabulate(
-    table_data,
-    headers=[
-        "Scale",
-        "openpyxl Total", "rpyxl Total", "Total Speedup",
-        "openpyxl Save", "rpyxl Save", "Save Speedup",
-        "openpyxl ΔRSS", "rpyxl ΔRSS",
-        "rpyxl Throughput"
-    ],
-    tablefmt="github"
-))
+print(
+    tabulate(
+        table_data,
+        headers=[
+            "Scale",
+            "openpyxl Total",
+            "rpyxl Total",
+            "Total Speedup",
+            "openpyxl Save",
+            "rpyxl Save",
+            "Save Speedup",
+            "openpyxl ΔRSS",
+            "rpyxl ΔRSS",
+            "rpyxl Throughput",
+        ],
+        tablefmt="github",
+    )
+)
 
-print("\n" + "="*80)
+print("\n" + "=" * 80)
 print(" FILE SIZE & FORMATTING FIDELITY CHECK")
-print("="*80)
+print("=" * 80)
 
 size_table = []
 for r in results:
-    size_table.append([
-        r["scale"],
-        f"{r['ox_size']:,.1f} KB",
-        f"{r['px_size']:,.1f} KB",
-        f"{(r['px_size'] / r['ox_size'] * 100):.1f}% of openpyxl"
-    ])
+    size_table.append(
+        [
+            r["scale"],
+            f"{r['ox_size']:,.1f} KB",
+            f"{r['px_size']:,.1f} KB",
+            f"{(r['px_size'] / r['ox_size'] * 100):.1f}% of openpyxl",
+        ]
+    )
 
-print(tabulate(
-    size_table,
-    headers=["Scale", "openpyxl Size", "rpyxl Size", "Ratio (rpyxl / openpyxl)"],
-    tablefmt="github"
-))
-
+print(
+    tabulate(
+        size_table,
+        headers=["Scale", "openpyxl Size", "rpyxl Size", "Ratio (rpyxl / openpyxl)"],
+        tablefmt="github",
+    )
+)

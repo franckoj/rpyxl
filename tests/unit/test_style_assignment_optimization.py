@@ -29,9 +29,7 @@ def _styles():
 
 
 @pytest.mark.parametrize("source", _styles())
-def test_unchanged_assignment_reuses_tokens_but_still_checks_children(
-    source, monkeypatch
-):
+def test_unchanged_assignment_reuses_tokens_but_still_checks_children(source, monkeypatch):
     pool = StylePool()
     frozen = pool.assign(source)
     token = source._style_cache[0]
@@ -170,12 +168,8 @@ def test_opaque_addition_after_caching_and_recovery(location):
     first = pool.assign(source)
     target._xml.set("value", "second")
     second = pool.assign(source)
-    first_target = {"root": first, "side": first.left, "color": first.left.color}[
-        location
-    ]
-    second_target = {"root": second, "side": second.left, "color": second.left.color}[
-        location
-    ]
+    first_target = {"root": first, "side": first.left, "color": first.left.color}[location]
+    second_target = {"root": second, "side": second.left, "color": second.left.color}[location]
     assert type(first) is type(second) is Border
     assert first_target._xml.get("value") == "first"
     assert second_target._xml.get("value") == "second"

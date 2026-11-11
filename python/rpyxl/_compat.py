@@ -111,17 +111,13 @@ def structural_metadata(sheet, axis, idx, amount, delete=False):
         value = shift(row if axis == "row" else col)
         if value is None:
             return None
-        return coordinate(
-            col if axis == "row" else value, value if axis == "row" else row
-        )
+        return coordinate(col if axis == "row" else value, value if axis == "row" else row)
 
     result.cells = {}
     for ref, metadata in sheet.cells.items():
         new_ref = point(*coordinate_parts(ref))
         if new_ref:
-            if metadata.hyperlink is not None and not isinstance(
-                metadata.hyperlink, str
-            ):
+            if metadata.hyperlink is not None and not isinstance(metadata.hyperlink, str):
                 metadata = deepcopy(metadata)
                 metadata.hyperlink.ref = new_ref
             result.cells[new_ref] = metadata
@@ -156,9 +152,7 @@ def move_metadata(sheet, cell_range, rows, cols):
         if c1 <= col <= c2 and r1 <= row <= r2:
             new_ref = coordinate(col + cols, row + rows)
             metadata = deepcopy(metadata)
-            if metadata.hyperlink is not None and not isinstance(
-                metadata.hyperlink, str
-            ):
+            if metadata.hyperlink is not None and not isinstance(metadata.hyperlink, str):
                 metadata.hyperlink.ref = new_ref
             moving[new_ref] = metadata
             result.cells.pop(ref, None)
@@ -252,9 +246,7 @@ def read_number_formats(source, title):
                 continue
             if node.tag == q("c") and "s" in node.attrib:
                 index = int(node.attrib["s"])
-                result[node.attrib["r"]] = (
-                    xfs[index] if 0 <= index < len(xfs) else "General"
-                )
+                result[node.attrib["r"]] = xfs[index] if 0 <= index < len(xfs) else "General"
             if len(stack) > 1:
                 stack[-2].remove(node)
             stack.pop()

@@ -49,9 +49,7 @@ def _assert_unchanged(snapshot):
 
 
 def _assert_extensions(data, expected):
-    namespaces = dict(
-        pair for event, pair in ET.iterparse(BytesIO(data), events=("start-ns",))
-    )
+    namespaces = dict(pair for event, pair in ET.iterparse(BytesIO(data), events=("start-ns",)))
     root = ET.fromstring(data)
     prefixes = root.get(IGNORABLE, "").split()
     assert len(prefixes) == len(set(prefixes))
@@ -203,9 +201,7 @@ def test_existing_mc_prefix_is_reused_and_multiple_extensions_are_ignorable():
 def test_locally_added_prefixes_do_not_collide_with_registered_names():
     ET.register_namespace("mc", EXTENSIONS[0])
     ET.register_namespace("mc1", "urn:other")
-    root = ET.Element(
-        _metadata.q("worksheet"), {_metadata.q("flag", "urn:other"): "yes"}
-    )
+    root = ET.Element(_metadata.q("worksheet"), {_metadata.q("flag", "urn:other"): "yes"})
     ET.SubElement(root, _metadata.q("feature", EXTENSIONS[0]))
     data = _metadata.dump(root)
     _assert_extensions(data, (EXTENSIONS[0],))
@@ -215,9 +211,7 @@ def test_locally_added_prefixes_do_not_collide_with_registered_names():
 def test_default_extension_alias_avoids_an_existing_ext_prefix():
     ET.register_namespace("", EXTENSIONS[0])
     ET.register_namespace("ext", "urn:other")
-    root = ET.Element(
-        _metadata.q("worksheet"), {_metadata.q("flag", "urn:other"): "yes"}
-    )
+    root = ET.Element(_metadata.q("worksheet"), {_metadata.q("flag", "urn:other"): "yes"})
     ET.SubElement(root, _metadata.q("feature", EXTENSIONS[0]))
     parsed, _ = _assert_extensions(_metadata.dump(root), (EXTENSIONS[0],))
     assert parsed.get(IGNORABLE) == "ext1"
@@ -291,9 +285,7 @@ def test_repeated_overlay_preserves_metadata_snapshots_and_native_cell_payloads(
     template = _stale_tree()
     # Loaded XML has string keys/values; QName/None handling is tested directly.
     template[0].attrib = {"first": "x", IGNORABLE: "old14", "last": "y"}
-    ET.SubElement(
-        template[0], _metadata.q("feature", EXTENSIONS[0]), {"custom": "kept"}
-    )
+    ET.SubElement(template[0], _metadata.q("feature", EXTENSIONS[0]), {"custom": "kept"})
     sheet = MetadataSheet()
     sheet._xml = template
     metadata = MetadataBook(sheets={"Sheet": sheet})
@@ -309,10 +301,7 @@ def test_repeated_overlay_preserves_metadata_snapshots_and_native_cell_payloads(
             data = archive.read("xl/worksheets/sheet1.xml")
         parsed, _ = _assert_extensions(data, (EXTENSIONS[0],))
         assert ET.tostring(parsed.find(_metadata.q("sheetData"))) == payload
-        assert (
-            parsed.find(".//" + _metadata.q("feature", EXTENSIONS[0])).get("custom")
-            == "kept"
-        )
+        assert parsed.find(".//" + _metadata.q("feature", EXTENSIONS[0])).get("custom") == "kept"
         _assert_unchanged(snapshot)
         results.append(data)
     assert results[0] == results[1]

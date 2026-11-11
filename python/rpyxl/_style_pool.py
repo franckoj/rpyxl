@@ -42,9 +42,7 @@ class FrozenStyle:
             type(value) not in _STYLE_PRIMITIVES and type(value) is not FrozenStyle
             for value in values
         ):
-            raise TypeError(
-                "Frozen styles may contain only primitives or frozen styles"
-            )
+            raise TypeError("Frozen styles may contain only primitives or frozen styles")
         object.__setattr__(self, "_model_type", model_type)
         object.__setattr__(self, "_values", values)
         # Python equates True, 1, and 1.0; interning must not substitute their
@@ -68,9 +66,7 @@ class FrozenStyle:
 
     @property
     def __dict__(self):
-        return MappingProxyType(
-            dict(zip(_style_fields(self._model_type), self._values))
-        )
+        return MappingProxyType(dict(zip(_style_fields(self._model_type), self._values)))
 
     def __getattr__(self, name):
         model_type = self._model_type
@@ -83,9 +79,7 @@ class FrozenStyle:
         raise AttributeError(name)
 
     def __setattr__(self, name, value):
-        raise AttributeError(
-            "FrozenStyle is immutable; edit a cell view or call to_model()"
-        )
+        raise AttributeError("FrozenStyle is immutable; edit a cell view or call to_model()")
 
     def __delattr__(self, name):
         raise AttributeError("FrozenStyle is immutable")
@@ -122,9 +116,7 @@ class FrozenStyle:
         """Return a fully independent, normal mutable model, without normalization."""
         model = self._model_type.__new__(self._model_type)
         for name, value in zip(_style_fields(self._model_type), self._values):
-            setattr(
-                model, name, value.to_model() if type(value) is FrozenStyle else value
-            )
+            setattr(model, name, value.to_model() if type(value) is FrozenStyle else value)
         return model
 
 
@@ -252,9 +244,7 @@ class _StyleView:
             delattr(target, name)
         else:
             if type(value) in (FrozenStyle, _StyleView):
-                value = (
-                    value.to_model() if type(value) is FrozenStyle else deepcopy(value)
-                )
+                value = value.to_model() if type(value) is FrozenStyle else deepcopy(value)
             setattr(target, name, value)
         self._set_current(self._pool.assign(model))
 

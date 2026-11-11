@@ -1,8 +1,8 @@
 """Pytest configuration and common fixtures."""
 
+import openpyxl
 import pytest
 import rpyxl
-import openpyxl
 
 
 @pytest.fixture

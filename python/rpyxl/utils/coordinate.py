@@ -25,9 +25,7 @@ def column_index_from_string(col_str: str) -> int:
     for char in clean:
         col = col * 26 + (ord(char) - ord("A") + 1)
     if not (1 <= col <= 16384):
-        raise ValueError(
-            f"Column index for {col_str} is out of bounds (allowed: 1-16384)"
-        )
+        raise ValueError(f"Column index for {col_str} is out of bounds (allowed: 1-16384)")
     return col
 
 

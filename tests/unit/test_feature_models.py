@@ -1,4 +1,5 @@
 """Model regressions independent of native parsing and serialization."""
+
 from types import SimpleNamespace
 
 import openpyxl
@@ -7,7 +8,9 @@ from rpyxl.chart import BarChart, Reference
 from rpyxl.styles import Color, PatternFill
 
 
-@pytest.mark.parametrize("sheet", ["Sales", SimpleNamespace(title="Sales")], ids=["title", "worksheet"])
+@pytest.mark.parametrize(
+    "sheet", ["Sales", SimpleNamespace(title="Sales")], ids=["title", "worksheet"]
+)
 def test_reference_accepts_sheet_title_and_worksheet(sheet):
     reference = Reference(sheet, min_col=2, min_row=1, max_col=3, max_row=4)
     assert reference.sheetname == "Sales"

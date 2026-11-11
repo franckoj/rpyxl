@@ -100,9 +100,7 @@ def _source():
         sheet[coordinate].font = openpyxl.styles.Font(
             name="Source Font", bold=True, color="FF123456"
         )
-        sheet[coordinate].fill = openpyxl.styles.PatternFill(
-            "solid", fgColor="FFABCDEF"
-        )
+        sheet[coordinate].fill = openpyxl.styles.PatternFill("solid", fgColor="FFABCDEF")
         sheet[coordinate].alignment = openpyxl.styles.Alignment(horizontal="center")
     sheet["B1"].comment = openpyxl.comments.Comment("Original comment", "Author")
     sheet["B1"].hyperlink = "https://example.com/original"
@@ -128,9 +126,7 @@ def _load(data):
         "_source_style_record",
         "_update_cell_styles",
     ):
-        assert hasattr(NativeWorkbook, name), (
-            f"Rebuild the native wheel: missing {name}"
-        )
+        assert hasattr(NativeWorkbook, name), f"Rebuild the native wheel: missing {name}"
     book = load_workbook(BytesIO(data))
     assert book._native_package_api
     assert book._native_style_reader is not None
@@ -145,9 +141,7 @@ def _saved(book):
 
 
 def _forbid(*args, **kwargs):
-    raise AssertionError(
-        "Ordinary native load/style access must not parse Python metadata"
-    )
+    raise AssertionError("Ordinary native load/style access must not parse Python metadata")
 
 
 def test_load_and_style_get_never_load_metadata_or_scan_worksheets(monkeypatch):
@@ -184,9 +178,7 @@ def test_native_default_style_assignment_overrides_inherited_row_style():
     book = _load(_rewrite(_source(), "xl/worksheets/sheet1.xml", add_row))
     try:
         record = book._native._source_style_record(0)
-        book._native._update_cell_styles(
-            [record], [("Sheet", 2, 1, 0), ("Sheet", 2, 2, 0)]
-        )
+        book._native._update_cell_styles([record], [("Sheet", 2, 1, 0), ("Sheet", 2, 2, 0)])
         for _ in range(2):
             with ZipFile(BytesIO(_saved(book))) as archive:
                 root = ET.fromstring(archive.read("xl/worksheets/sheet1.xml"))
@@ -329,9 +321,7 @@ def test_original_xml_features_survive_style_only_native_save(monkeypatch):
         ):
             root = ET.fromstring(output.read("xl/worksheets/sheet1.xml"))
             assert root.find(S + "extLst/{urn:producer}feature").get("value") == "keep"
-            assert original.read("xl/theme/theme1.xml") == output.read(
-                "xl/theme/theme1.xml"
-            )
+            assert original.read("xl/theme/theme1.xml") == output.read("xl/theme/theme1.xml")
             assert original.read("xl/_rels/workbook.xml.rels") == output.read(
                 "xl/_rels/workbook.xml.rels"
             )
@@ -416,9 +406,7 @@ def _merged_metadata_state(book, state):
 
 @pytest.mark.parametrize("state", ["lazy", "sparse", "full"])
 @pytest.mark.parametrize("keyword_bounds", [False, True], ids=["range", "bounds"])
-def test_loaded_unmerge_clears_unaccessed_native_styles(
-    monkeypatch, state, keyword_bounds
-):
+def test_loaded_unmerge_clears_unaccessed_native_styles(monkeypatch, state, keyword_bounds):
     book = _load(_merged_source())
     monkeypatch.setattr(_metadata._Styles, "read", _forbid)
     try:
@@ -438,9 +426,7 @@ def test_loaded_unmerge_clears_unaccessed_native_styles(
         records, assignments = compile_style_records(book._book)
         for row, col in ((4, 3), (6, 4)):
             index = next(
-                index
-                for title, r, c, index in assignments
-                if (title, r, c) == ("Sheet", row, col)
+                index for title, r, c, index in assignments if (title, r, c) == ("Sheet", row, col)
             )
             assert records[index] == (None,) * 5
         descendants = ("C4", "D4", "B5", "C5", "D5", "B6", "C6", "D6")
@@ -486,9 +472,7 @@ def test_loaded_unmerge_clears_unaccessed_native_styles(
     "access",
     ["setitem", "index", "range", "cell", "cell_value", "rows", "cols", "iter"],
 )
-def test_loaded_merge_rejects_descendant_writes_without_metadata_load(
-    monkeypatch, state, access
-):
+def test_loaded_merge_rejects_descendant_writes_without_metadata_load(monkeypatch, state, access):
     book = _load(_merged_source())
     try:
         _merged_metadata_state(book, state)
@@ -510,13 +494,9 @@ def test_loaded_merge_rejects_descendant_writes_without_metadata_load(
                 elif access == "cell":
                     cell = sheet.cell(row=5, column=3)
                 elif access == "rows":
-                    cell = next(
-                        sheet.iter_rows(min_row=5, max_row=5, min_col=3, max_col=3)
-                    )[0]
+                    cell = next(sheet.iter_rows(min_row=5, max_row=5, min_col=3, max_col=3))[0]
                 elif access == "cols":
-                    cell = next(
-                        sheet.iter_cols(min_row=5, max_row=5, min_col=3, max_col=3)
-                    )[0]
+                    cell = next(sheet.iter_cols(min_row=5, max_row=5, min_col=3, max_col=3))[0]
                 else:
                     cell = list(sheet)[4][2]
                 assert isinstance(cell, MergedCell)
@@ -548,9 +528,7 @@ def test_loaded_merge_rejects_descendant_writes_without_metadata_load(
         ("move_range", ("B4:D6",), {"rows": 2, "cols": 1}),
     ],
 )
-def test_loaded_merge_guards_structure_without_changing_sheet(
-    state, operation, args, kwargs
-):
+def test_loaded_merge_guards_structure_without_changing_sheet(state, operation, args, kwargs):
     book = _load(_merged_source())
     try:
         _merged_metadata_state(book, state)
@@ -568,9 +546,7 @@ def test_loaded_merge_guards_structure_without_changing_sheet(
         assert sheet["B4"].number_format == "0.000"
         assert book._structure_changed is before_changed
         assert {str(value) for value in sheet.merged_cells} == {"B4:D6"}
-        assert set(book._book.sheets["Sheet"].cells) == (
-            {"A1"} if state == "sparse" else set()
-        )
+        assert set(book._book.sheets["Sheet"].cells) == ({"A1"} if state == "sparse" else set())
         assert isinstance(sheet["C5"], MergedCell)
         result = openpyxl.load_workbook(BytesIO(_saved(book)))
         try:
@@ -610,9 +586,7 @@ def test_native_copy_keeps_source_styles_with_only_sparse_metadata():
 def test_sheet_insertion_updates_unloaded_local_name_scopes():
     source = openpyxl.load_workbook(BytesIO(_source()))
     source.active.defined_names.add(
-        openpyxl.workbook.defined_name.DefinedName(
-            "Local", attr_text="Sheet!$A$1", localSheetId=0
-        )
+        openpyxl.workbook.defined_name.DefinedName("Local", attr_text="Sheet!$A$1", localSheetId=0)
     )
     output = BytesIO()
     source.save(output)

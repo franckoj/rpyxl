@@ -1,8 +1,8 @@
 """Compatibility test suite comparing openpyxl and RPyXL behavior directly."""
 
+import openpyxl
 import pytest
 import rpyxl
-import openpyxl
 
 
 def test_compat_workbook_defaults():
@@ -65,7 +65,7 @@ def test_compat_cell_types_and_values():
 
     for coord, _ in test_data:
         assert p_ws[coord].value == o_ws[coord].value
-        assert type(p_ws[coord].value) == type(o_ws[coord].value)
+        assert type(p_ws[coord].value) is type(o_ws[coord].value)
         assert p_ws[coord].coordinate == o_ws[coord].coordinate
         assert p_ws[coord].row == o_ws[coord].row
         assert p_ws[coord].column == o_ws[coord].column

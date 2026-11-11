@@ -31,9 +31,7 @@ def load_workbook(
     """
     if kwargs:
         unexpected = next(iter(kwargs))
-        raise TypeError(
-            f"load_workbook() got an unexpected keyword argument {unexpected!r}"
-        )
+        raise TypeError(f"load_workbook() got an unexpected keyword argument {unexpected!r}")
     if keep_vba:
         raise NotImplementedError("VBA preservation is not implemented")
     if rich_text:
@@ -42,9 +40,7 @@ def load_workbook(
     # Native loading snapshots binary streams, including for lazy read-only access.
     # The caller retains ownership; the stream is never closed by rpyxl.
     try:
-        native = _load_workbook(
-            filename, read_only=bool(read_only), data_only=bool(data_only)
-        )
+        native = _load_workbook(filename, read_only=bool(read_only), data_only=bool(data_only))
     except (ValueError, OSError, Exception) as e:
         msg = str(e)
         if any(

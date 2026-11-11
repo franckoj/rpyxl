@@ -17,9 +17,7 @@ from rpyxl.styles import Font
 @pytest.fixture
 def metadata_book():
     return MetadataBook(
-        sheets={
-            "Sheet": MetadataSheet(cells={"A1": CellMetadata(font=Font(bold=True))})
-        }
+        sheets={"Sheet": MetadataSheet(cells={"A1": CellMetadata(font=Font(bold=True))})}
     )
 
 
@@ -51,9 +49,7 @@ def _source(*, unsupported=False):
     return rewritten
 
 
-def test_style_only_check_does_not_reflect_or_snapshot_each_cell(
-    metadata_book, monkeypatch
-):
+def test_style_only_check_does_not_reflect_or_snapshot_each_cell(metadata_book, monkeypatch):
     _native_styles._field_layout.cache_clear()
     reflect = Mock(wraps=_native_styles.fields)
     snapshot = Mock(wraps=_native_styles._snapshot)
@@ -88,9 +84,7 @@ def test_even_falsey_nonstyle_annotations_require_overlay(metadata_book, name, v
 
 
 @pytest.mark.parametrize("value", [None, {}, ET.Element("cell")])
-def test_unknown_cell_attributes_are_checked_after_direct_mutation(
-    metadata_book, value
-):
+def test_unknown_cell_attributes_are_checked_after_direct_mutation(metadata_book, value):
     cell = metadata_book.sheets["Sheet"].cells["A1"]
     assert not _native_styles.requires_metadata_overlay(metadata_book)
     cell.future_feature = value
@@ -143,9 +137,7 @@ def test_new_book_checks_eligibility_once_per_save(monkeypatch, package_api, ric
 
 
 @pytest.mark.parametrize("target", ["book", "sheet", "cell"])
-def test_direct_unknown_attribute_mutation_changes_next_save_eligibility(
-    monkeypatch, target
-):
+def test_direct_unknown_attribute_mutation_changes_next_save_eligibility(monkeypatch, target):
     check = Mock(wraps=_native_styles.requires_metadata_overlay)
     apply = Mock(wraps=_metadata.apply_metadata)
     monkeypatch.setattr(_native_styles, "requires_metadata_overlay", check)
@@ -206,9 +198,7 @@ def test_loaded_style_only_save_stays_lazy_with_one_check(monkeypatch):
         monkeypatch.setattr(_native_styles, "requires_metadata_overlay", check)
 
         def unexpected(*args, **kwargs):
-            raise AssertionError(
-                "Style-only saves must not promote or overlay metadata"
-            )
+            raise AssertionError("Style-only saves must not promote or overlay metadata")
 
         monkeypatch.setattr(_metadata, "load_metadata", unexpected)
         monkeypatch.setattr(_metadata, "apply_metadata", unexpected)
@@ -281,16 +271,12 @@ def test_prepare_structure_clears_native_structure_mode_and_loads_metadata():
         assert not book._native_structure_only
         assert not book._structure_changed
         assert book._full_metadata_loaded
-        assert (
-            book._book.sheets[book.active.title].cells["B1"].comment.text == "Original"
-        )
+        assert book._book.sheets[book.active.title].cells["B1"].comment.text == "Original"
         assert not book._native_style_reader.opaque_cells
 
 
 @pytest.mark.parametrize("structure_changed", [False, True])
-def test_invalid_native_structure_proof_forces_metadata_fallback(
-    monkeypatch, structure_changed
-):
+def test_invalid_native_structure_proof_forces_metadata_fallback(monkeypatch, structure_changed):
     with load_workbook(_source(unsupported=True)) as book:
         assert not book._native._can_preserve_package()
         # Exercise save's invalidated-proof state even with an older wheel.

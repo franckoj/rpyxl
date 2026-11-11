@@ -1,19 +1,22 @@
-import os
 import datetime
+import os
+
 import pytest
-import rpyxl
 from rpyxl import load_workbook
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
+
 
 def test_load_workbook_missing_file():
     with pytest.raises(FileNotFoundError):
         load_workbook("non_existent_file_12345.xlsx")
 
+
 def test_load_workbook_corrupted_file():
     corrupted_path = os.path.join(FIXTURES_DIR, "corrupted.xlsx")
     with pytest.raises((IOError, ValueError, Exception)):
         load_workbook(corrupted_path)
+
 
 def test_load_workbook_standard_sample_types():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
@@ -44,6 +47,7 @@ def test_load_workbook_standard_sample_types():
 
     wb.close()
 
+
 def test_load_workbook_data_only():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
     wb_form = load_workbook(path, data_only=False)
@@ -56,6 +60,7 @@ def test_load_workbook_data_only():
     val = wb_data["Sheet1"]["B5"].value
     assert val is None or isinstance(val, (int, float))
     wb_data.close()
+
 
 def test_load_workbook_multilingual_and_escaping():
     path = os.path.join(FIXTURES_DIR, "multilingual.xlsx")
@@ -74,6 +79,7 @@ def test_load_workbook_multilingual_and_escaping():
     assert "🚀 🦀 🐍 ⚡ 📊" in rows[7][1]
     wb.close()
 
+
 def test_load_workbook_multi_sheet():
     path = os.path.join(FIXTURES_DIR, "multi_sheet.xlsx")
     wb = load_workbook(path)
@@ -89,6 +95,7 @@ def test_load_workbook_multi_sheet():
     assert ws_2024["B2"].value == 750000
     wb.close()
 
+
 def test_load_workbook_sparse():
     path = os.path.join(FIXTURES_DIR, "sparse.xlsx")
     wb = load_workbook(path)
@@ -101,10 +108,12 @@ def test_load_workbook_sparse():
     assert ws["D10"].value == "Far Away"
     wb.close()
 
+
 def test_load_workbook_context_manager():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
     with load_workbook(path) as wb:
         assert len(wb.sheetnames) >= 1
+
 
 def test_streaming_read_only_mode():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
@@ -163,8 +172,8 @@ def test_streaming_read_only_mode():
     with pytest.raises((TypeError, AttributeError)):
         cell_a2.value = "New"
 
-
     wb.close()
+
 
 def test_streaming_sparse_sheet():
     path = os.path.join(FIXTURES_DIR, "sparse.xlsx")

@@ -47,14 +47,10 @@ def _snapshot(value):
             names = names | STYLE_INTERNAL_FIELDS
         return (
             type(value),
-            tuple(
-                (field.name, _snapshot(getattr(value, field.name))) for field in layout
-            ),
+            tuple((field.name, _snapshot(getattr(value, field.name))) for field in layout),
             tuple(
                 sorted(
-                    (key, _snapshot(item))
-                    for key, item in vars(value).items()
-                    if key not in names
+                    (key, _snapshot(item)) for key, item in vars(value).items() if key not in names
                 )
             ),
         )
@@ -64,8 +60,7 @@ def _snapshot(value):
             frozenset((_snapshot(key), _snapshot(item)) for key, item in value.items()),
             tuple(
                 sorted(
-                    (key, _snapshot(item))
-                    for key, item in getattr(value, "__dict__", {}).items()
+                    (key, _snapshot(item)) for key, item in getattr(value, "__dict__", {}).items()
                 )
             ),
         )
@@ -75,8 +70,7 @@ def _snapshot(value):
             tuple(_snapshot(item) for item in value),
             tuple(
                 sorted(
-                    (key, _snapshot(item))
-                    for key, item in getattr(value, "__dict__", {}).items()
+                    (key, _snapshot(item)) for key, item in getattr(value, "__dict__", {}).items()
                 )
             ),
         )
@@ -174,9 +168,9 @@ def requires_metadata_overlay(metadata_book):
         return True
     default_book = MetadataBook()
     for field in _field_layout(type(metadata_book))[0]:
-        if field.name != "sheets" and _snapshot(
-            getattr(metadata_book, field.name)
-        ) != _snapshot(getattr(default_book, field.name)):
+        if field.name != "sheets" and _snapshot(getattr(metadata_book, field.name)) != _snapshot(
+            getattr(default_book, field.name)
+        ):
             return True
     for sheet in metadata_book.sheets.values():
         if _has_extra_attributes(sheet):
@@ -199,10 +193,7 @@ def requires_metadata_overlay(metadata_book):
                         return True
             elif name in ("column_dimensions", "row_dimensions"):
                 default = getattr(default_sheet, name).factory()
-                if any(
-                    _snapshot(dimension) != _snapshot(default)
-                    for dimension in value.values()
-                ):
+                if any(_snapshot(dimension) != _snapshot(default) for dimension in value.values()):
                     return True
                 if vars(value) != vars(getattr(default_sheet, name)):
                     return True

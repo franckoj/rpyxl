@@ -109,9 +109,7 @@ def decode_record(record, pool):
             value = parsers[index](node)
         else:
             cls = Alignment if name == "alignment" else Protection
-            value = xml._model(
-                cls, node, xml._ALIGN_NAMES if name == "alignment" else None
-            )
+            value = xml._model(cls, node, xml._ALIGN_NAMES if name == "alignment" else None)
         if node.tag == _NS + name and _clean_xml(node):
             _strip_xml(value)
         result.append(pool.assign(value))

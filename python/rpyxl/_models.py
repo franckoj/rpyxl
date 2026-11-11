@@ -121,11 +121,7 @@ class DefinedNames(dict):
     """Global names use string keys; sheet-local names use (name, sheet_id)."""
 
     def add(self, value):
-        self[
-            value.name
-            if value.localSheetId is None
-            else (value.name, value.localSheetId)
-        ] = value
+        self[value.name if value.localSheetId is None else (value.name, value.localSheetId)] = value
 
     append = add
 
@@ -276,9 +272,7 @@ class Rule(_XMLModel):
     colorScale: Any = None
 
 
-def CellIsRule(
-    operator=None, formula=None, stopIfTrue=None, font=None, border=None, fill=None
-):
+def CellIsRule(operator=None, formula=None, stopIfTrue=None, font=None, border=None, fill=None):
     return Rule(
         "cellIs",
         operator,
@@ -361,9 +355,7 @@ class Reference:
             self.min_col, self.min_row, self.max_col, self.max_row = range_bounds(cells)
         else:
             self.sheetname = (
-                worksheet
-                if isinstance(worksheet, str)
-                else getattr(worksheet, "title", None)
+                worksheet if isinstance(worksheet, str) else getattr(worksheet, "title", None)
             )
             if not isinstance(self.sheetname, str):
                 raise ValueError("Reference requires a worksheet or sheet title")
@@ -473,9 +465,7 @@ class MergedCells:
             self.ranges.append(cell_range)
 
     def remove(self, value):
-        self.ranges.remove(
-            value if isinstance(value, CellRange) else CellRange(str(value))
-        )
+        self.ranges.remove(value if isinstance(value, CellRange) else CellRange(str(value)))
 
     def __iter__(self):
         return iter(self.ranges)
@@ -608,9 +598,7 @@ class MetadataSheet(_XMLModel):
     title: str = "Sheet"
     cells: dict = field(default_factory=dict)
     merged_cells: MergedCells = field(default_factory=MergedCells)
-    column_dimensions: Dimensions = field(
-        default_factory=lambda: Dimensions(ColumnDimension)
-    )
+    column_dimensions: Dimensions = field(default_factory=lambda: Dimensions(ColumnDimension))
     row_dimensions: Dimensions = field(default_factory=lambda: Dimensions(RowDimension))
     freeze_panes: str | None = None
     auto_filter: AutoFilter = field(default_factory=AutoFilter)
@@ -619,9 +607,7 @@ class MetadataSheet(_XMLModel):
     protection: SheetProtection = field(default_factory=SheetProtection)
     page_setup: PageSetup = field(default_factory=PageSetup)
     data_validations: DataValidations = field(default_factory=DataValidations)
-    conditional_formatting: ConditionalFormatting = field(
-        default_factory=ConditionalFormatting
-    )
+    conditional_formatting: ConditionalFormatting = field(default_factory=ConditionalFormatting)
     tables: Tables = field(default_factory=Tables)
     charts: list = field(default_factory=list)
 

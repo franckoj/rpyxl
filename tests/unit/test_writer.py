@@ -1,10 +1,9 @@
 """Unit tests for RPyXL High-Performance Writer (Standard & Write-Only Modes)."""
 
 import datetime
-from pathlib import Path
-import pytest
 import zipfile
 
+import pytest
 from rpyxl import Workbook, load_workbook
 
 
@@ -178,14 +177,18 @@ class TestWriteOnlyWriter:
     def test_write_only_append_rows_and_extend(self, tmp_path):
         wb = Workbook(write_only=True)
         ws = wb.create_sheet("BatchSheet")
-        ws.append_rows([
-            [1, 2],
-            {"A": 10, "B": 20},
-        ])
-        ws.extend([
-            [3, 4],
-            {"B": 99},
-        ])
+        ws.append_rows(
+            [
+                [1, 2],
+                {"A": 10, "B": 20},
+            ]
+        )
+        ws.extend(
+            [
+                [3, 4],
+                {"B": 99},
+            ]
+        )
         file_path = tmp_path / "batch_wo.xlsx"
         wb.save(file_path)
 

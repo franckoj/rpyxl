@@ -104,9 +104,7 @@ def test_repeated_assignments_use_cached_freeze_without_reading_scalar_fields(
     assert source._style_cache[1] is frozen
 
 
-@pytest.mark.parametrize(
-    "factory", [Font, PatternFill, Border, Alignment, Protection, Color, Side]
-)
+@pytest.mark.parametrize("factory", [Font, PatternFill, Border, Alignment, Protection, Color, Side])
 def test_plain_construction_and_copy_do_not_allocate_tracking(factory, monkeypatch):
     def unexpected_layout(model_type):
         raise AssertionError("Untracked models must not inspect the field layout")
@@ -352,9 +350,7 @@ def test_font_color_edits_aliases_and_assignment_of_views():
         (Side, "border_style", "style", "thin"),
     ],
 )
-def test_non_font_aliases_are_tracked_and_writable_through_views(
-    factory, alias, canonical, value
-):
+def test_non_font_aliases_are_tracked_and_writable_through_views(factory, alias, canonical, value):
     pool = StylePool()
     source = factory()
     before = pool.assign(source)
@@ -484,9 +480,7 @@ def test_metadata_serializers_accept_frozen_models():
 def test_original_xml_is_uncached_and_independently_copied_on_every_assignment():
     pool = StylePool()
     source = Font(b=True)
-    pool.assign(
-        source
-    )  # Adding an opaque attribute must invalidate an old clean cache.
+    pool.assign(source)  # Adding an opaque attribute must invalidate an old clean cache.
     source._xml = ET.fromstring('<font custom="one"><extension/></font>')
     first = pool.assign(source)
     source._xml.set("custom", "two")
@@ -660,9 +654,7 @@ def test_tracking_fields_are_explicit_and_never_dataclass_fields():
         "_style_cache",
     }
     assert not (set(_style_fields(Font)) & STYLE_INTERNAL_FIELDS)
-    assert not (
-        set(vars(deepcopy(source))) - set(_style_fields(Font)) - STYLE_INTERNAL_FIELDS
-    )
+    assert not (set(vars(deepcopy(source))) - set(_style_fields(Font)) - STYLE_INTERNAL_FIELDS)
 
 
 def test_pool_does_not_retain_sources_or_obsolete_frozen_values():
@@ -684,14 +676,10 @@ def test_pool_does_not_retain_sources_or_obsolete_frozen_values():
     "field, values",
     [("sz", (12, 12.0)), ("b", (True, 1, 1.0))],
 )
-def test_interning_preserves_primitive_types_and_consistent_frozen_equality(
-    field, values
-):
+def test_interning_preserves_primitive_types_and_consistent_frozen_equality(field, values):
     pool = StylePool()
     frozen = [pool.assign(Font(**{field: value})) for value in values]
-    assert [type(getattr(style, field)) for style in frozen] == [
-        type(value) for value in values
-    ]
+    assert [type(getattr(style, field)) for style in frozen] == [type(value) for value in values]
     assert [type(getattr(style.to_model(), field)) for style in frozen] == [
         type(value) for value in values
     ]
@@ -938,25 +926,18 @@ def test_loaded_original_xml_fallback_is_writable_and_isolated_between_cells(
         sheet["D1"].font = a.font
         assert not sheet["D1"].font.bold
         assert sheet["D1"].font.color.rgb == "FFABCDEF"
-        assert (
-            sheet["D1"].font._xml.find(_metadata.q("extension")).get("value")
-            == "edited"
-        )
+        assert sheet["D1"].font._xml.find(_metadata.q("extension")).get("value") == "edited"
         for cell in (b, sheet["C1"]):
             assert cell.font.bold
             assert cell.font.color.rgb == "FF123456"
-            assert (
-                cell.font._xml.find(_metadata.q("extension")).get("value") == "source"
-            )
+            assert cell.font._xml.find(_metadata.q("extension")).get("value") == "source"
         sheet["D1"].font.color.tint = 0.5
         assert a.font.color.tint == b.font.color.tint == 0
         output = BytesIO()
         loaded.save(output)
         with ZipFile(output) as archive:
             saved_styles = ET.fromstring(archive.read("xl/styles.xml"))
-        markers = {
-            node.get("value") for node in saved_styles.iter(_metadata.q("extension"))
-        }
+        markers = {node.get("value") for node in saved_styles.iter(_metadata.q("extension"))}
         assert markers == {"source", "edited"}
         output.seek(0)
         saved = openpyxl.load_workbook(output)

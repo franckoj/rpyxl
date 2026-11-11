@@ -1,16 +1,14 @@
 """Phase 7 Security Hardening and Malicious Archive Defense Tests."""
 
-import io
 import os
 import tempfile
 import zipfile
-import pytest
 
+import pytest
 import rpyxl
 from rpyxl.utils.exceptions import (
     InvalidFileException,
     SheetTitleException,
-    OpenpyxlException,
 )
 
 
@@ -39,10 +37,12 @@ def test_corrupted_truncated_zip():
 
 def test_missing_workbook_xml():
     """Verify archive missing workbook.xml raises InvalidFileException."""
-    path = create_zip_archive({
-        "[Content_Types].xml": b"<Types></Types>",
-        "random.txt": b"Hello world",
-    })
+    path = create_zip_archive(
+        {
+            "[Content_Types].xml": b"<Types></Types>",
+            "random.txt": b"Hello world",
+        }
+    )
 
     try:
         with pytest.raises((InvalidFileException, ValueError)):
@@ -56,11 +56,13 @@ def test_zip_bomb_high_compression_ratio_rejected():
     # 10 MB of zeros compresses down to a few kilobytes (ratio ~1000:1)
     large_zeros = b"\x00" * (10 * 1024 * 1024)
 
-    path = create_zip_archive({
-        "_rels/.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-        "xl/workbook.xml": b'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
-        "xl/worksheets/sheet1.xml": large_zeros,
-    })
+    path = create_zip_archive(
+        {
+            "_rels/.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+            "xl/workbook.xml": b'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            "xl/worksheets/sheet1.xml": large_zeros,
+        }
+    )
 
     try:
         with pytest.raises((InvalidFileException, ValueError)) as excinfo:
@@ -74,21 +76,23 @@ def test_xml_doctype_xxe_entity_injection_rejected():
     """Verify XML files containing DOCTYPE/DTD entity injections are rejected."""
     malicious_shared_strings = (
         b'<?xml version="1.0" encoding="UTF-8"?>\n'
-        b'<!DOCTYPE sst [\n'
+        b"<!DOCTYPE sst [\n"
         b'  <!ENTITY xxe SYSTEM "file:///etc/passwd">\n'
-        b']>\n'
+        b"]>\n"
         b'<sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">\n'
-        b'  <si><t>&xxe;</t></si>\n'
-        b'</sst>'
+        b"  <si><t>&xxe;</t></si>\n"
+        b"</sst>"
     )
 
-    path = create_zip_archive({
-        "_rels/.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-        "xl/_rels/workbook.xml.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
-        "xl/workbook.xml": b'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
-        "xl/worksheets/sheet1.xml": b'<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>',
-        "xl/sharedStrings.xml": malicious_shared_strings,
-    })
+    path = create_zip_archive(
+        {
+            "_rels/.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
+            "xl/_rels/workbook.xml.rels": b'<?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>',
+            "xl/workbook.xml": b'<?xml version="1.0" encoding="UTF-8"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets></workbook>',
+            "xl/worksheets/sheet1.xml": b'<?xml version="1.0" encoding="UTF-8"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1"><c r="A1" t="s"><v>0</v></c></row></sheetData></worksheet>',
+            "xl/sharedStrings.xml": malicious_shared_strings,
+        }
+    )
 
     try:
         with pytest.raises((InvalidFileException, ValueError)) as excinfo:

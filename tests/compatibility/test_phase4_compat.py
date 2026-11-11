@@ -4,6 +4,7 @@ import datetime
 
 import openpyxl
 import pytest
+import rpyxl
 from openpyxl.utils import (
     quote_sheetname as o_quote_sheetname,
 )
@@ -35,8 +36,6 @@ from rpyxl.utils.exceptions import (
     SheetTitleException,
 )
 
-import rpyxl
-
 
 class TestWorkbookCompatibility:
     """Test Workbook methods and behaviors against openpyxl."""
@@ -60,8 +59,8 @@ class TestWorkbookCompatibility:
         p_wb = rpyxl.Workbook()
         o_wb = openpyxl.Workbook()
 
-        p_ws1 = p_wb.create_sheet("Sheet2")
-        o_ws1 = o_wb.create_sheet("Sheet2")
+        p_wb.create_sheet("Sheet2")
+        o_wb.create_sheet("Sheet2")
 
         # Set active by index
         p_wb.active = 1
@@ -264,8 +263,12 @@ class TestWorksheetCompatibility:
         assert p_cols_pos == o_cols_pos
 
         # iter_cols keyword
-        p_cols_kw = list(p_ws.iter_cols(min_col=1, max_col=2, min_row=1, max_row=2, values_only=True))
-        o_cols_kw = list(o_ws.iter_cols(min_col=1, max_col=2, min_row=1, max_row=2, values_only=True))
+        p_cols_kw = list(
+            p_ws.iter_cols(min_col=1, max_col=2, min_row=1, max_row=2, values_only=True)
+        )
+        o_cols_kw = list(
+            o_ws.iter_cols(min_col=1, max_col=2, min_row=1, max_row=2, values_only=True)
+        )
         assert p_cols_kw == o_cols_kw
 
         p_wb.close()

@@ -1,11 +1,15 @@
 import os
+
 import openpyxl
-import rpyxl
 import pytest
+import rpyxl
 
 FIXTURES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "fixtures")
 
-@pytest.mark.parametrize("filename", ["sample_types.xlsx", "multilingual.xlsx", "multi_sheet.xlsx", "sparse.xlsx"])
+
+@pytest.mark.parametrize(
+    "filename", ["sample_types.xlsx", "multilingual.xlsx", "multi_sheet.xlsx", "sparse.xlsx"]
+)
 def test_compat_sheetnames_and_active(filename):
     path = os.path.join(FIXTURES_DIR, filename)
 
@@ -16,9 +20,9 @@ def test_compat_sheetnames_and_active(filename):
     assert px_wb.active.title == op_wb.active.title
     assert len(px_wb.sheetnames) == len(op_wb.sheetnames)
 
-
     op_wb.close()
     px_wb.close()
+
 
 def test_compat_sample_types_cell_values():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
@@ -33,10 +37,13 @@ def test_compat_sample_types_cell_values():
         for c in range(1, 6):
             op_val = op_ws.cell(r, c).value
             px_val = px_ws.cell(r, c).value
-            assert px_val == op_val, f"Mismatch at ({r}, {c}): rpyxl={px_val!r} vs openpyxl={op_val!r}"
+            assert px_val == op_val, (
+                f"Mismatch at ({r}, {c}): rpyxl={px_val!r} vs openpyxl={op_val!r}"
+            )
 
     op_wb.close()
     px_wb.close()
+
 
 def test_compat_multilingual_values():
     path = os.path.join(FIXTURES_DIR, "multilingual.xlsx")
@@ -53,6 +60,7 @@ def test_compat_multilingual_values():
 
     op_wb.close()
     px_wb.close()
+
 
 def test_compat_read_only_streaming():
     path = os.path.join(FIXTURES_DIR, "sample_types.xlsx")
@@ -78,6 +86,7 @@ def test_compat_read_only_streaming():
 
     op_wb.close()
     px_wb.close()
+
 
 def test_compat_sparse_sheet_iteration():
     path = os.path.join(FIXTURES_DIR, "sparse.xlsx")

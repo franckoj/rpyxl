@@ -1,12 +1,10 @@
 """Compatibility tests verifying round-trip fidelity between RPyXL, openpyxl, and calamine."""
 
 import datetime
-from pathlib import Path
-import pytest
-import openpyxl
-from python_calamine import CalamineWorkbook
 
+import openpyxl
 import rpyxl
+from python_calamine import CalamineWorkbook
 
 
 class TestWriterCompatibility:

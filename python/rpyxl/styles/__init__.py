@@ -17,9 +17,7 @@ _STYLE_PRIMITIVES = (type(None), bool, int, float, str, bytes)
 
 @lru_cache(maxsize=32)
 def _style_fields(model_type):
-    return MappingProxyType(
-        {field.name: index for index, field in enumerate(fields(model_type))}
-    )
+    return MappingProxyType({field.name: index for index, field in enumerate(fields(model_type))})
 
 
 class _StyleModel:
@@ -155,12 +153,8 @@ class Color(_StyleModel):
     def __post_init__(self):
         if self.rgb is not None:
             value = self.rgb.lstrip("#")
-            if len(value) not in (6, 8) or any(
-                c not in "0123456789abcdefABCDEF" for c in value
-            ):
-                raise ValueError(
-                    "RGB colors must contain six or eight hexadecimal digits"
-                )
+            if len(value) not in (6, 8) or any(c not in "0123456789abcdefABCDEF" for c in value):
+                raise ValueError("RGB colors must contain six or eight hexadecimal digits")
             self.rgb = ("00" + value if len(value) == 6 else value).upper()
 
     @property
@@ -335,9 +329,7 @@ class Protection(_StyleModel):
     hidden: bool = False
 
 
-_STYLE_TYPES = frozenset(
-    {Font, PatternFill, Border, Alignment, Protection, Color, Side}
-)
+_STYLE_TYPES = frozenset({Font, PatternFill, Border, Alignment, Protection, Color, Side})
 
 
 __all__ = ["Alignment", "Border", "Color", "Font", "PatternFill", "Protection", "Side"]

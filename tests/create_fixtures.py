@@ -1,6 +1,8 @@
-import os
 import datetime
+import os
+
 import openpyxl
+
 
 def generate_fixtures():
     fixtures_dir = os.path.join(os.path.dirname(__file__), "fixtures")
@@ -65,6 +67,7 @@ def generate_fixtures():
         f.write("This is definitely not a valid XLSX or ZIP file.")
 
     print(f"Successfully generated fixtures in {fixtures_dir}")
+
 
 if __name__ == "__main__":
     generate_fixtures()

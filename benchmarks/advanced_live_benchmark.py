@@ -8,31 +8,39 @@ Tests:
 4. Memory RSS Tracking Under Sustained Load
 """
 
+import gc
 import os
 import sys
 import time
-import gc
-import psutil
-from tabulate import tabulate
 
 import openpyxl
-from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-
+import psutil
 import rpyxl
-from rpyxl.styles import Font as RFont, PatternFill as RPatternFill, Alignment as RAlignment, Border as RBorder, Side as RSide
+from openpyxl.styles import Border, Font, PatternFill, Side
+from rpyxl.styles import Border as RBorder
+from rpyxl.styles import Font as RFont
+from rpyxl.styles import PatternFill as RPatternFill
+from rpyxl.styles import Side as RSide
+from tabulate import tabulate
 
 print("================================================================")
-print(f" ADVANCED LIVE BENCHMARK: Multi-Sheet, Styling, Slicing & Memory")
-print(f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}")
-print(f" CPU Cores: {psutil.cpu_count(logical=True)} logical ({psutil.cpu_count(logical=False)} physical)")
+print(" ADVANCED LIVE BENCHMARK: Multi-Sheet, Styling, Slicing & Memory")
+print(
+    f" Python: {sys.version.split()[0]} | openpyxl: {openpyxl.__version__} | rpyxl: {rpyxl.__version__}"
+)
+print(
+    f" CPU Cores: {psutil.cpu_count(logical=True)} logical ({psutil.cpu_count(logical=False)} physical)"
+)
 print("================================================================\n")
 
 OUTPUT_DIR = "/tmp/advanced_bench_data"
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
+
 def get_rss_mb():
     gc.collect()
     return psutil.Process().memory_info().rss / (1024 * 1024)
+
 
 # ==============================================================================
 # 1. MULTI-SHEET PARALLELISM (1,000,000 CELLS ACROSS 5 SHEETS)
@@ -49,12 +57,12 @@ rss_start = get_rss_mb()
 t0 = time.perf_counter()
 wb_ox = openpyxl.Workbook()
 for s in range(N_SHEETS):
-    title = f"Department_{s+1}"
+    title = f"Department_{s + 1}"
     ws = wb_ox.active if s == 0 else wb_ox.create_sheet(title=title)
     if s == 0:
         ws.title = title
     for r in range(1, ROWS_PER_SHEET + 1):
-        ws.append([f"S{s+1}_R{r}_C{c}" for c in range(1, COLS + 1)])
+        ws.append([f"S{s + 1}_R{r}_C{c}" for c in range(1, COLS + 1)])
 wb_ox.save(file_ox_multi)
 wb_ox.close()
 t_multi_ox = time.perf_counter() - t0
@@ -66,12 +74,12 @@ rss_start = get_rss_mb()
 t0 = time.perf_counter()
 wb_px = rpyxl.Workbook()
 for s in range(N_SHEETS):
-    title = f"Department_{s+1}"
+    title = f"Department_{s + 1}"
     ws = wb_px.active if s == 0 else wb_px.create_sheet(title=title)
     if s == 0:
         ws.title = title
     for r in range(1, ROWS_PER_SHEET + 1):
-        ws.append([f"S{s+1}_R{r}_C{c}" for c in range(1, COLS + 1)])
+        ws.append([f"S{s + 1}_R{r}_C{c}" for c in range(1, COLS + 1)])
 wb_px.save(file_px_multi)
 wb_px.close()
 t_multi_px = time.perf_counter() - t0
@@ -80,15 +88,31 @@ rss_multi_px = get_rss_mb() - rss_start
 multi_speedup = t_multi_ox / t_multi_px if t_multi_px > 0 else 0
 multi_throughput = TOTAL_CELLS / t_multi_px if t_multi_px > 0 else 0
 
-print(tabulate([
-    [
-        f"Multi-Sheet Save ({TOTAL_CELLS:,} cells)",
-        f"{t_multi_ox:.4f}s", f"{t_multi_px:.4f}s",
-        f"{multi_speedup:.2f}x faster",
-        f"{multi_throughput:,.0f} cells/s",
-        f"{rss_multi_ox:+.1f} MB", f"{rss_multi_px:+.1f} MB"
-    ]
-], headers=["Workload", "openpyxl (Wall)", "rpyxl (Wall)", "Speedup", "rpyxl Throughput", "openpyxl RSS Δ", "rpyxl RSS Δ"], tablefmt="github"))
+print(
+    tabulate(
+        [
+            [
+                f"Multi-Sheet Save ({TOTAL_CELLS:,} cells)",
+                f"{t_multi_ox:.4f}s",
+                f"{t_multi_px:.4f}s",
+                f"{multi_speedup:.2f}x faster",
+                f"{multi_throughput:,.0f} cells/s",
+                f"{rss_multi_ox:+.1f} MB",
+                f"{rss_multi_px:+.1f} MB",
+            ]
+        ],
+        headers=[
+            "Workload",
+            "openpyxl (Wall)",
+            "rpyxl (Wall)",
+            "Speedup",
+            "rpyxl Throughput",
+            "openpyxl RSS Δ",
+            "rpyxl RSS Δ",
+        ],
+        tablefmt="github",
+    )
+)
 print()
 
 # ==============================================================================
@@ -174,14 +198,29 @@ t_style_px = time.perf_counter() - t0
 rss_style_px = get_rss_mb() - rss_start
 
 style_speedup = t_style_ox / t_style_px if t_style_px > 0 else 0
-print(tabulate([
-    [
-        "Styled Sheet (50k styled cells)",
-        f"{t_style_ox:.4f}s", f"{t_style_px:.4f}s",
-        f"{style_speedup:.2f}x faster",
-        f"{rss_style_ox:+.1f} MB", f"{rss_style_px:+.1f} MB"
-    ]
-], headers=["Workload", "openpyxl (Wall)", "rpyxl (Wall)", "Speedup", "openpyxl RSS Δ", "rpyxl RSS Δ"], tablefmt="github"))
+print(
+    tabulate(
+        [
+            [
+                "Styled Sheet (50k styled cells)",
+                f"{t_style_ox:.4f}s",
+                f"{t_style_px:.4f}s",
+                f"{style_speedup:.2f}x faster",
+                f"{rss_style_ox:+.1f} MB",
+                f"{rss_style_px:+.1f} MB",
+            ]
+        ],
+        headers=[
+            "Workload",
+            "openpyxl (Wall)",
+            "rpyxl (Wall)",
+            "Speedup",
+            "openpyxl RSS Δ",
+            "rpyxl RSS Δ",
+        ],
+        tablefmt="github",
+    )
+)
 print()
 
 # ==============================================================================
@@ -216,22 +255,44 @@ slice_speedup = t_slice_ox / t_slice_px if t_slice_px > 0 else 0
 # B. Column-major Iteration: iter_cols()
 t0 = time.perf_counter()
 wb = openpyxl.load_workbook(test_file)
-cols_ox = [[cell.value for cell in col] for col in wb.active.iter_cols(min_col=1, max_col=10, min_row=1, max_row=5000)]
+cols_ox = [
+    [cell.value for cell in col]
+    for col in wb.active.iter_cols(min_col=1, max_col=10, min_row=1, max_row=5000)
+]
 wb.close()
 t_cols_ox = time.perf_counter() - t0
 
 t0 = time.perf_counter()
 wb = rpyxl.load_workbook(test_file)
-cols_px = [[cell.value for cell in col] for col in wb.active.iter_cols(min_col=1, max_col=10, min_row=1, max_row=5000)]
+cols_px = [
+    [cell.value for cell in col]
+    for col in wb.active.iter_cols(min_col=1, max_col=10, min_row=1, max_row=5000)
+]
 wb.close()
 t_cols_px = time.perf_counter() - t0
 
 cols_speedup = t_cols_ox / t_cols_px if t_cols_px > 0 else 0
 
-print(tabulate([
-    ["2D Block Slicing ws['A1:J5000']", f"{t_slice_ox:.4f}s", f"{t_slice_px:.4f}s", f"{slice_speedup:.2f}x faster"],
-    ["Column Iteration iter_cols()", f"{t_cols_ox:.4f}s", f"{t_cols_px:.4f}s", f"{cols_speedup:.2f}x faster"]
-], headers=["Access Pattern", "openpyxl", "rpyxl", "Speedup"], tablefmt="github"))
+print(
+    tabulate(
+        [
+            [
+                "2D Block Slicing ws['A1:J5000']",
+                f"{t_slice_ox:.4f}s",
+                f"{t_slice_px:.4f}s",
+                f"{slice_speedup:.2f}x faster",
+            ],
+            [
+                "Column Iteration iter_cols()",
+                f"{t_cols_ox:.4f}s",
+                f"{t_cols_px:.4f}s",
+                f"{cols_speedup:.2f}x faster",
+            ],
+        ],
+        headers=["Access Pattern", "openpyxl", "rpyxl", "Speedup"],
+        tablefmt="github",
+    )
+)
 print()
 
 # ==============================================================================
@@ -253,9 +314,20 @@ t_resave_px = time.perf_counter() - t0
 
 resave_speedup = t_resave_ox / t_resave_px if t_resave_px > 0 else 0
 
-print(tabulate([
-    ["Full 1M Cell Re-save Cycle", f"{t_resave_ox:.4f}s", f"{t_resave_px:.4f}s", f"{resave_speedup:.2f}x faster"]
-], headers=["Operation", "openpyxl", "rpyxl", "Speedup"], tablefmt="github"))
+print(
+    tabulate(
+        [
+            [
+                "Full 1M Cell Re-save Cycle",
+                f"{t_resave_ox:.4f}s",
+                f"{t_resave_px:.4f}s",
+                f"{resave_speedup:.2f}x faster",
+            ]
+        ],
+        headers=["Operation", "openpyxl", "rpyxl", "Speedup"],
+        tablefmt="github",
+    )
+)
 
 print("\n================================================================")
 print(" ADVANCED BENCHMARK COMPLETE")

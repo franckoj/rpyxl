@@ -9,7 +9,6 @@ Measures:
 - Generates visual plots (PNG) and Markdown/JSON reports
 """
 
-import csv
 import gc
 import json
 import os
@@ -19,8 +18,10 @@ import sys
 import threading
 import time
 from datetime import datetime
-import psutil
+
 import matplotlib
+import psutil
+
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
@@ -45,6 +46,7 @@ def get_environment_info():
 
 class CPUMonitor:
     """Samples CPU utilization percentage during a benchmark run."""
+
     def __init__(self, interval=0.01):
         self.interval = interval
         self.samples = []
@@ -118,6 +120,7 @@ def ensure_benchmark_file(rows=10000, cols=10):
 # ==============================================================================
 # Phase 1 Benchmarks (In-Memory)
 # ==============================================================================
+
 
 def bench_create_workbook(lib_name, iterations=200):
     mod = __import__(lib_name)
@@ -285,6 +288,7 @@ def bench_iteration_values(lib_name, rows=5000, cols=10):
 # Phase 2 Benchmarks (XLSX Reader)
 # ==============================================================================
 
+
 def bench_load_full_workbook(lib_name, filepath, read_only=False):
     mod = __import__(lib_name)
     load_workbook = mod.load_workbook
@@ -350,7 +354,7 @@ def bench_calamine_full_read(filepath):
         wb = CalamineWorkbook.from_path(filepath)
         sheet_name = wb.sheet_names[0]
         rows = wb.get_sheet_by_name(sheet_name).to_python()
-        count = len(rows)
+        _ = len(rows)
 
         c1 = time.process_time()
         t1 = time.perf_counter()
@@ -386,7 +390,7 @@ def bench_time_to_first_row(lib_name, filepath, read_only=True):
         c0 = time.process_time()
 
         wb = load_workbook(filepath, read_only=read_only)
-        row1 = next(iter(wb.active.iter_rows(values_only=True)))
+        _ = next(iter(wb.active.iter_rows(values_only=True)))
         wb.close()
 
         c1 = time.process_time()
@@ -413,11 +417,23 @@ def bench_time_to_first_row(lib_name, filepath, read_only=True):
 # Phase 3 Benchmarks (High-Performance XLSX Writer)
 # ==============================================================================
 
+
 def bench_standard_write(lib_name, rows=10000, cols=10):
     mod = __import__(lib_name)
     Workbook = mod.Workbook
     tmp_out = f"/tmp/bench_std_save_{lib_name}.xlsx"
-    sample_row = ["User_X", 100, 3.1415, True, datetime(2023, 1, 1), "Item_A", 50, 0.05, False, "Active"]
+    sample_row = [
+        "User_X",
+        100,
+        3.1415,
+        True,
+        datetime(2023, 1, 1),
+        "Item_A",
+        50,
+        0.05,
+        False,
+        "Active",
+    ]
 
     def build_wb():
         wb = Workbook()
@@ -480,7 +496,18 @@ def bench_write_only_streaming(lib_name, rows=10000, cols=10):
     mod = __import__(lib_name)
     Workbook = mod.Workbook
     tmp_out = f"/tmp/bench_wo_{lib_name}_{rows}.xlsx"
-    sample_row = ["User_X", 100, 3.1415, True, datetime(2023, 1, 1), "Item_A", 50, 0.05, False, "Active"]
+    sample_row = [
+        "User_X",
+        100,
+        3.1415,
+        True,
+        datetime(2023, 1, 1),
+        "Item_A",
+        50,
+        0.05,
+        False,
+        "Active",
+    ]
 
     # Warmup
     for _ in range(WARMUP_RUNS):
@@ -544,7 +571,18 @@ def bench_roundtrip(lib_name, rows=5000, cols=10):
     Workbook = mod.Workbook
     load_workbook = mod.load_workbook
     tmp_out = f"/tmp/bench_rt_{lib_name}.xlsx"
-    sample_row = ["User_X", 100, 3.1415, True, datetime(2023, 1, 1), "Item_A", 50, 0.05, False, "Active"]
+    sample_row = [
+        "User_X",
+        100,
+        3.1415,
+        True,
+        datetime(2023, 1, 1),
+        "Item_A",
+        50,
+        0.05,
+        False,
+        "Active",
+    ]
 
     times = []
     cpu_times = []
@@ -567,7 +605,7 @@ def bench_roundtrip(lib_name, rows=5000, cols=10):
         wb.close()
 
         wb_in = load_workbook(tmp_out)
-        count = sum(len(r) for r in wb_in.active.iter_rows(values_only=True))
+        _ = sum(len(r) for r in wb_in.active.iter_rows(values_only=True))
         wb_in.close()
 
         c1 = time.process_time()
@@ -634,22 +672,30 @@ def generate_phase2_plots(p2_data):
 
     # 1. Reading Time
     fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.bar(ops, times, color=colors[:len(ops)], width=0.5)
+    bars = ax.bar(ops, times, color=colors[: len(ops)], width=0.5)
     ax.set_ylabel("Execution Time (seconds) - Lower is better")
     ax.set_title("XLSX Read Time (10,000 rows x 10 columns)")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.4f}s",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{h:.4f}s",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
     plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase2_reading_time.png", dpi=150)
     plt.close()
 
     # 2. Reading Speedup
-    openpyxl_std_time = next(item["time_s"] for item in p2_data if "openpyxl (Standard)" in item["name"])
+    openpyxl_std_time = next(
+        item["time_s"] for item in p2_data if "openpyxl (Standard)" in item["name"]
+    )
     speedup_items = []
     for item in p2_data:
         speedup = openpyxl_std_time / item["time_s"] if item["time_s"] > 0 else 1.0
@@ -659,15 +705,23 @@ def generate_phase2_plots(p2_data):
     s_names = [x[0] for x in speedup_items]
     s_vals = [x[1] for x in speedup_items]
     bars = ax.bar(s_names, s_vals, color="#2980b9", width=0.5)
-    ax.axhline(1.0, color="gray", linestyle="--", linewidth=1, label="Baseline (openpyxl std = 1.0x)")
+    ax.axhline(
+        1.0, color="gray", linestyle="--", linewidth=1, label="Baseline (openpyxl std = 1.0x)"
+    )
     ax.set_ylabel("Speedup Multiplier vs openpyxl (Higher is better)")
     ax.set_title("XLSX Reading Speedup Multiplier vs openpyxl Standard")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.1f}x",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{h:.1f}x",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
     plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase2_speedup.png", dpi=150)
@@ -676,15 +730,26 @@ def generate_phase2_plots(p2_data):
     # 3. Peak RSS Memory
     mems = [item["rss_mb"] for item in p2_data]
     fig, ax = plt.subplots(figsize=(10, 5))
-    bars = ax.bar(ops, mems, color=["#e67e22", "#d35400", "#27ae60", "#16a085", "#2980b9"][:len(ops)], width=0.5)
+    bars = ax.bar(
+        ops,
+        mems,
+        color=["#e67e22", "#d35400", "#27ae60", "#16a085", "#2980b9"][: len(ops)],
+        width=0.5,
+    )
     ax.set_ylabel("Peak RSS Memory (MB) - Lower is better")
     ax.set_title("Peak Memory Usage During XLSX Read (10,000 rows)")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.1f} MB",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{h:.1f} MB",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
     plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase2_memory.png", dpi=150)
@@ -696,19 +761,34 @@ def generate_phase3_plots(p3_data):
 
     ops = [item["name"] for item in p3_data]
     times = [item["time_s"] for item in p3_data]
-    colors = ["#e74c3c", "#2ecc71", "#e67e22", "#27ae60", "#c0392b", "#16a085", "#8e44ad", "#2980b9"]
+    colors = [
+        "#e74c3c",
+        "#2ecc71",
+        "#e67e22",
+        "#27ae60",
+        "#c0392b",
+        "#16a085",
+        "#8e44ad",
+        "#2980b9",
+    ]
 
     # 1. Writing Execution Time
     fig, ax = plt.subplots(figsize=(12, 6))
-    bars = ax.bar(ops, times, color=colors[:len(ops)], width=0.55)
+    bars = ax.bar(ops, times, color=colors[: len(ops)], width=0.55)
     ax.set_ylabel("Execution Time (seconds) - Lower is better")
     ax.set_title("XLSX Writing Execution Time: RPyXL vs openpyxl")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.3f}s",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{h:.3f}s",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase3_writing_time.png", dpi=150)
@@ -718,10 +798,12 @@ def generate_phase3_plots(p3_data):
     fig, ax = plt.subplots(figsize=(10, 5))
     speedup_ops = []
     speedups = []
-    for pair in [("Standard Save (10k)", "openpyxl (Std Save 10k)", "RPyXL (Std Save 10k)"),
-                 ("Write-Only Streaming (10k)", "openpyxl (Write-Only 10k)", "RPyXL (Write-Only 10k)"),
-                 ("Write-Only Large (50k)", "openpyxl (Write-Only 50k)", "RPyXL (Write-Only 50k)"),
-                 ("Roundtrip (5k)", "openpyxl (Roundtrip 5k)", "RPyXL (Roundtrip 5k)")]:
+    for pair in [
+        ("Standard Save (10k)", "openpyxl (Std Save 10k)", "RPyXL (Std Save 10k)"),
+        ("Write-Only Streaming (10k)", "openpyxl (Write-Only 10k)", "RPyXL (Write-Only 10k)"),
+        ("Write-Only Large (50k)", "openpyxl (Write-Only 50k)", "RPyXL (Write-Only 50k)"),
+        ("Roundtrip (5k)", "openpyxl (Roundtrip 5k)", "RPyXL (Roundtrip 5k)"),
+    ]:
         label, op_name, px_name = pair
         op_item = next((x for x in p3_data if x["name"] == op_name), None)
         px_item = next((x for x in p3_data if x["name"] == px_name), None)
@@ -736,10 +818,16 @@ def generate_phase3_plots(p3_data):
     ax.set_title("RPyXL Writing Speedup over openpyxl")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.1f}x",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=10, fontweight="bold")
+        ax.annotate(
+            f"{h:.1f}x",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=10,
+            fontweight="bold",
+        )
     plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase3_speedup.png", dpi=150)
@@ -748,15 +836,21 @@ def generate_phase3_plots(p3_data):
     # 3. Peak RSS Memory
     mems = [item["rss_mb"] for item in p3_data]
     fig, ax = plt.subplots(figsize=(12, 6))
-    bars = ax.bar(ops, mems, color=colors[:len(ops)], width=0.55)
+    bars = ax.bar(ops, mems, color=colors[: len(ops)], width=0.55)
     ax.set_ylabel("Peak RSS Memory (MB) - Lower is better")
     ax.set_title("Memory Footprint During XLSX Writing (Standard & Streaming)")
     for bar in bars:
         h = bar.get_height()
-        ax.annotate(f"{h:.1f} MB",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=9, fontweight="bold")
+        ax.annotate(
+            f"{h:.1f} MB",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+            fontweight="bold",
+        )
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase3_memory.png", dpi=150)
@@ -771,10 +865,16 @@ def generate_phase3_plots(p3_data):
     for bar, item in zip(bars, p3_data):
         h = bar.get_height()
         pct = item.get("cpu_pct", 100.0)
-        ax.annotate(f"{h:.3f}s\n({pct:.0f}% CPU)",
-                    xy=(bar.get_x() + bar.get_width() / 2, h),
-                    xytext=(0, 3), textcoords="offset points",
-                    ha="center", va="bottom", fontsize=8, fontweight="bold")
+        ax.annotate(
+            f"{h:.3f}s\n({pct:.0f}% CPU)",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8,
+            fontweight="bold",
+        )
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("benchmarks/reports/phase3_cpu_utilization.png", dpi=150)
@@ -807,25 +907,29 @@ def run_all():
         rpyxl_m = compute_metrics(fn("rpyxl"))
         openpyxl_m = compute_metrics(fn("openpyxl"))
 
-        speedup = openpyxl_m["median_sec"] / rpyxl_m["median_sec"] if rpyxl_m["median_sec"] > 0 else 1.0
+        speedup = (
+            openpyxl_m["median_sec"] / rpyxl_m["median_sec"] if rpyxl_m["median_sec"] > 0 else 1.0
+        )
         mem_diff_pct = (
             (1.0 - (rpyxl_m["peak_rss_mb"] / openpyxl_m["peak_rss_mb"])) * 100
             if openpyxl_m["peak_rss_mb"] > 0
             else 0.0
         )
 
-        p1_results.append({
-            "Operation": rpyxl_m["operation"],
-            "Dataset": rpyxl_m["dataset"],
-            "openpyxl_time_s": round(openpyxl_m["median_sec"], 4),
-            "rpyxl_time_s": round(rpyxl_m["median_sec"], 4),
-            "speedup": round(speedup, 2),
-            "openpyxl_rss_mb": openpyxl_m["peak_rss_mb"],
-            "rpyxl_rss_mb": rpyxl_m["peak_rss_mb"],
-            "mem_reduction_pct": round(mem_diff_pct, 1),
-            "rpyxl_throughput": f"{round(rpyxl_m['throughput'], 1):,} {rpyxl_m['unit_name']}/s",
-            "openpyxl_throughput": f"{round(openpyxl_m['throughput'], 1):,} {openpyxl_m['unit_name']}/s",
-        })
+        p1_results.append(
+            {
+                "Operation": rpyxl_m["operation"],
+                "Dataset": rpyxl_m["dataset"],
+                "openpyxl_time_s": round(openpyxl_m["median_sec"], 4),
+                "rpyxl_time_s": round(rpyxl_m["median_sec"], 4),
+                "speedup": round(speedup, 2),
+                "openpyxl_rss_mb": openpyxl_m["peak_rss_mb"],
+                "rpyxl_rss_mb": rpyxl_m["peak_rss_mb"],
+                "mem_reduction_pct": round(mem_diff_pct, 1),
+                "rpyxl_throughput": f"{round(rpyxl_m['throughput'], 1):,} {rpyxl_m['unit_name']}/s",
+                "openpyxl_throughput": f"{round(openpyxl_m['throughput'], 1):,} {openpyxl_m['unit_name']}/s",
+            }
+        )
 
     # -------------------------------------------------------------------------
     # Part 2: Phase 2 XLSX Reader Operations
@@ -838,16 +942,36 @@ def run_all():
     m_cal = compute_metrics(bench_calamine_full_read(bench_file))
 
     p2_chart_data = [
-        {"name": "openpyxl (Standard)", "time_s": round(m_op_std["median_sec"], 4), "rss_mb": m_op_std["peak_rss_mb"]},
-        {"name": "openpyxl (read_only)", "time_s": round(m_op_ro["median_sec"], 4), "rss_mb": m_op_ro["peak_rss_mb"]},
-        {"name": "RPyXL (Standard)", "time_s": round(m_px_std["median_sec"], 4), "rss_mb": m_px_std["peak_rss_mb"]},
-        {"name": "RPyXL (read_only)", "time_s": round(m_px_ro["median_sec"], 4), "rss_mb": m_px_ro["peak_rss_mb"]},
-        {"name": "calamine (C-Rust)", "time_s": round(m_cal["median_sec"], 4), "rss_mb": m_cal["peak_rss_mb"]},
+        {
+            "name": "openpyxl (Standard)",
+            "time_s": round(m_op_std["median_sec"], 4),
+            "rss_mb": m_op_std["peak_rss_mb"],
+        },
+        {
+            "name": "openpyxl (read_only)",
+            "time_s": round(m_op_ro["median_sec"], 4),
+            "rss_mb": m_op_ro["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (Standard)",
+            "time_s": round(m_px_std["median_sec"], 4),
+            "rss_mb": m_px_std["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (read_only)",
+            "time_s": round(m_px_ro["median_sec"], 4),
+            "rss_mb": m_px_ro["peak_rss_mb"],
+        },
+        {
+            "name": "calamine (C-Rust)",
+            "time_s": round(m_cal["median_sec"], 4),
+            "rss_mb": m_cal["peak_rss_mb"],
+        },
     ]
 
     ttfr_op_std = compute_metrics(bench_time_to_first_row("openpyxl", bench_file, read_only=False))
     ttfr_op_ro = compute_metrics(bench_time_to_first_row("openpyxl", bench_file, read_only=True))
-    ttfr_px_std = compute_metrics(bench_time_to_first_row("rpyxl", bench_file, read_only=False))
+    _ttfr_px_std = compute_metrics(bench_time_to_first_row("rpyxl", bench_file, read_only=False))
     ttfr_px_ro = compute_metrics(bench_time_to_first_row("rpyxl", bench_file, read_only=True))
 
     p2_results = [
@@ -871,8 +995,8 @@ def run_all():
         },
         {
             "Operation": "Time to First Row (read_only=True)",
-            "openpyxl": f"{ttfr_op_ro['median_sec']*1000:.2f} ms",
-            "rpyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
+            "openpyxl": f"{ttfr_op_ro['median_sec'] * 1000:.2f} ms",
+            "rpyxl": f"{ttfr_px_ro['median_sec'] * 1000:.2f} ms",
             "speedup": f"{ttfr_op_ro['median_sec'] / ttfr_px_ro['median_sec']:.2f}x",
             "openpyxl_rss": f"{ttfr_op_ro['peak_rss_mb']:.1f} MB",
             "rpyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
@@ -880,8 +1004,8 @@ def run_all():
         },
         {
             "Operation": "Time to First Row (Standard vs RO)",
-            "openpyxl": f"{ttfr_op_std['median_sec']*1000:.2f} ms",
-            "rpyxl": f"{ttfr_px_ro['median_sec']*1000:.2f} ms",
+            "openpyxl": f"{ttfr_op_std['median_sec'] * 1000:.2f} ms",
+            "rpyxl": f"{ttfr_px_ro['median_sec'] * 1000:.2f} ms",
             "speedup": f"{ttfr_op_std['median_sec'] / ttfr_px_ro['median_sec']:.1f}x",
             "openpyxl_rss": f"{ttfr_op_std['peak_rss_mb']:.1f} MB",
             "rpyxl_rss": f"{ttfr_px_ro['peak_rss_mb']:.1f} MB",
@@ -921,14 +1045,62 @@ def run_all():
     m_rt_px = compute_metrics(bench_roundtrip("rpyxl", rows=5000, cols=10))
 
     p3_chart_data = [
-        {"name": "openpyxl (Std Save 10k)", "time_s": round(m_w_std_op["median_sec"], 4), "cpu_s": round(m_w_std_op["median_cpu_sec"], 4), "cpu_pct": m_w_std_op["cpu_util_pct"], "rss_mb": m_w_std_op["peak_rss_mb"]},
-        {"name": "RPyXL (Std Save 10k)", "time_s": round(m_w_std_px["median_sec"], 4), "cpu_s": round(m_w_std_px["median_cpu_sec"], 4), "cpu_pct": m_w_std_px["cpu_util_pct"], "rss_mb": m_w_std_px["peak_rss_mb"]},
-        {"name": "openpyxl (Write-Only 10k)", "time_s": round(m_wo_10k_op["median_sec"], 4), "cpu_s": round(m_wo_10k_op["median_cpu_sec"], 4), "cpu_pct": m_wo_10k_op["cpu_util_pct"], "rss_mb": m_wo_10k_op["peak_rss_mb"]},
-        {"name": "RPyXL (Write-Only 10k)", "time_s": round(m_wo_10k_px["median_sec"], 4), "cpu_s": round(m_wo_10k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_10k_px["cpu_util_pct"], "rss_mb": m_wo_10k_px["peak_rss_mb"]},
-        {"name": "openpyxl (Write-Only 50k)", "time_s": round(m_wo_50k_op["median_sec"], 4), "cpu_s": round(m_wo_50k_op["median_cpu_sec"], 4), "cpu_pct": m_wo_50k_op["cpu_util_pct"], "rss_mb": m_wo_50k_op["peak_rss_mb"]},
-        {"name": "RPyXL (Write-Only 50k)", "time_s": round(m_wo_50k_px["median_sec"], 4), "cpu_s": round(m_wo_50k_px["median_cpu_sec"], 4), "cpu_pct": m_wo_50k_px["cpu_util_pct"], "rss_mb": m_wo_50k_px["peak_rss_mb"]},
-        {"name": "openpyxl (Roundtrip 5k)", "time_s": round(m_rt_op["median_sec"], 4), "cpu_s": round(m_rt_op["median_cpu_sec"], 4), "cpu_pct": m_rt_op["cpu_util_pct"], "rss_mb": m_rt_op["peak_rss_mb"]},
-        {"name": "RPyXL (Roundtrip 5k)", "time_s": round(m_rt_px["median_sec"], 4), "cpu_s": round(m_rt_px["median_cpu_sec"], 4), "cpu_pct": m_rt_px["cpu_util_pct"], "rss_mb": m_rt_px["peak_rss_mb"]},
+        {
+            "name": "openpyxl (Std Save 10k)",
+            "time_s": round(m_w_std_op["median_sec"], 4),
+            "cpu_s": round(m_w_std_op["median_cpu_sec"], 4),
+            "cpu_pct": m_w_std_op["cpu_util_pct"],
+            "rss_mb": m_w_std_op["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (Std Save 10k)",
+            "time_s": round(m_w_std_px["median_sec"], 4),
+            "cpu_s": round(m_w_std_px["median_cpu_sec"], 4),
+            "cpu_pct": m_w_std_px["cpu_util_pct"],
+            "rss_mb": m_w_std_px["peak_rss_mb"],
+        },
+        {
+            "name": "openpyxl (Write-Only 10k)",
+            "time_s": round(m_wo_10k_op["median_sec"], 4),
+            "cpu_s": round(m_wo_10k_op["median_cpu_sec"], 4),
+            "cpu_pct": m_wo_10k_op["cpu_util_pct"],
+            "rss_mb": m_wo_10k_op["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (Write-Only 10k)",
+            "time_s": round(m_wo_10k_px["median_sec"], 4),
+            "cpu_s": round(m_wo_10k_px["median_cpu_sec"], 4),
+            "cpu_pct": m_wo_10k_px["cpu_util_pct"],
+            "rss_mb": m_wo_10k_px["peak_rss_mb"],
+        },
+        {
+            "name": "openpyxl (Write-Only 50k)",
+            "time_s": round(m_wo_50k_op["median_sec"], 4),
+            "cpu_s": round(m_wo_50k_op["median_cpu_sec"], 4),
+            "cpu_pct": m_wo_50k_op["cpu_util_pct"],
+            "rss_mb": m_wo_50k_op["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (Write-Only 50k)",
+            "time_s": round(m_wo_50k_px["median_sec"], 4),
+            "cpu_s": round(m_wo_50k_px["median_cpu_sec"], 4),
+            "cpu_pct": m_wo_50k_px["cpu_util_pct"],
+            "rss_mb": m_wo_50k_px["peak_rss_mb"],
+        },
+        {
+            "name": "openpyxl (Roundtrip 5k)",
+            "time_s": round(m_rt_op["median_sec"], 4),
+            "cpu_s": round(m_rt_op["median_cpu_sec"], 4),
+            "cpu_pct": m_rt_op["cpu_util_pct"],
+            "rss_mb": m_rt_op["peak_rss_mb"],
+        },
+        {
+            "name": "RPyXL (Roundtrip 5k)",
+            "time_s": round(m_rt_px["median_sec"], 4),
+            "cpu_s": round(m_rt_px["median_cpu_sec"], 4),
+            "cpu_pct": m_rt_px["cpu_util_pct"],
+            "rss_mb": m_rt_px["peak_rss_mb"],
+        },
     ]
 
     p3_results = [
@@ -988,13 +1160,19 @@ def run_all():
     with open(md_file, "w") as f:
         f.write("# RPyXL Comprehensive Benchmark Report (Phases 1, 2, and 3)\n\n")
         f.write(f"Generated at: {datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')}\n\n")
-        f.write(f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n")
+        f.write(
+            f"**Environment**: {env['os']} ({env['machine']}), {env['cpu_count_logical']} Logical Cores, {env['total_ram_mb']} MB RAM\n\n"
+        )
 
         f.write("## 1. Phase 3: High-Performance XLSX Writer & CPU Utilization Benchmarks\n\n")
-        f.write("| Operation | openpyxl (Wall) | RPyXL (Wall) | Speedup | openpyxl CPU Time | RPyXL CPU Time | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n")
+        f.write(
+            "| Operation | openpyxl (Wall) | RPyXL (Wall) | Speedup | openpyxl CPU Time | RPyXL CPU Time | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n"
+        )
         f.write("|---|---|---|---|---|---|---|---|---|\n")
         for r in p3_results:
-            f.write(f"| {r['Operation']} | {r['openpyxl_time']} | {r['rpyxl_time']} | **{r['speedup']}** | {r['openpyxl_cpu']} | {r['rpyxl_cpu']} | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['rpyxl_throughput']} |\n")
+            f.write(
+                f"| {r['Operation']} | {r['openpyxl_time']} | {r['rpyxl_time']} | **{r['speedup']}** | {r['openpyxl_cpu']} | {r['rpyxl_cpu']} | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['rpyxl_throughput']} |\n"
+            )
 
         f.write("\n### Phase 3 Performance Graphs\n\n")
         f.write("#### 1. Writing Execution Time (Wall-Clock)\n")
@@ -1007,10 +1185,14 @@ def run_all():
         f.write("![Writing CPU](phase3_cpu_utilization.png)\n\n")
 
         f.write("## 2. Phase 2: High-Performance XLSX Reader Benchmarks\n\n")
-        f.write("| Operation | openpyxl | RPyXL | Speedup | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n")
+        f.write(
+            "| Operation | openpyxl | RPyXL | Speedup | openpyxl RSS | RPyXL RSS | RPyXL Throughput |\n"
+        )
         f.write("|---|---|---|---|---|---|---|\n")
         for r in p2_results:
-            f.write(f"| {r['Operation']} | {r['openpyxl']} | {r['rpyxl']} | **{r['speedup']}** | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['throughput']} |\n")
+            f.write(
+                f"| {r['Operation']} | {r['openpyxl']} | {r['rpyxl']} | **{r['speedup']}** | {r['openpyxl_rss']} | {r['rpyxl_rss']} | {r['throughput']} |\n"
+            )
 
         f.write("\n### Phase 2 Performance Graphs\n\n")
         f.write("#### 1. Total Reading Execution Time (10,000 rows)\n")
@@ -1021,10 +1203,14 @@ def run_all():
         f.write("![Reading Memory](phase2_memory.png)\n\n")
 
         f.write("## 3. Phase 1: In-Memory Operations Benchmarks\n\n")
-        f.write("| Operation | Dataset | openpyxl (s) | RPyXL (s) | Speedup | openpyxl RSS | RPyXL RSS | Mem Reduction | RPyXL Throughput |\n")
+        f.write(
+            "| Operation | Dataset | openpyxl (s) | RPyXL (s) | Speedup | openpyxl RSS | RPyXL RSS | Mem Reduction | RPyXL Throughput |\n"
+        )
         f.write("|---|---|---|---|---|---|---|---|---|\n")
         for r in p1_results:
-            f.write(f"| {r['Operation']} | {r['Dataset']} | {r['openpyxl_time_s']}s | {r['rpyxl_time_s']}s | **{r['speedup']}x** | {r['openpyxl_rss_mb']} MB | {r['rpyxl_rss_mb']} MB | {r['mem_reduction_pct']}% | {r['rpyxl_throughput']} |\n")
+            f.write(
+                f"| {r['Operation']} | {r['Dataset']} | {r['openpyxl_time_s']}s | {r['rpyxl_time_s']}s | **{r['speedup']}x** | {r['openpyxl_rss_mb']} MB | {r['rpyxl_rss_mb']} MB | {r['mem_reduction_pct']}% | {r['rpyxl_throughput']} |\n"
+            )
 
     results_json = {
         "environment": env,
