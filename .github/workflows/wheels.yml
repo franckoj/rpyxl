@@ -119,10 +119,10 @@ jobs:
             fail-fast: false
             matrix:
                 include:
-                    - os: ubuntu-latest
+                    - os: ubuntu-24.04
                       python: "3.9"
                       artifact: wheels-linux-x86_64
-                    - os: ubuntu-latest
+                    - os: ubuntu-24.04
                       python: "3.14"
                       artifact: wheels-linux-x86_64
                     - os: macos-15
