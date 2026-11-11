@@ -161,6 +161,42 @@ class TestWriteOnlyWriter:
         assert rows[1] == ("CPU", 4.5, True)
         assert rows[2] == ("RAM", 12.8, False)
 
+    def test_write_only_dict_append(self, tmp_path):
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("DictSheet")
+        ws.append({"A": 100, "C": 300})
+        ws.append({1: "First", 2: "Second"})
+        file_path = tmp_path / "dict_wo.xlsx"
+        wb.save(file_path)
+
+        reloaded = load_workbook(file_path)
+        rows = list(reloaded["DictSheet"].iter_rows(values_only=True))
+        assert len(rows) == 2
+        assert rows[0] == (100, None, 300)
+        assert rows[1] == ("First", "Second", None)
+
+    def test_write_only_append_rows_and_extend(self, tmp_path):
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("BatchSheet")
+        ws.append_rows([
+            [1, 2],
+            {"A": 10, "B": 20},
+        ])
+        ws.extend([
+            [3, 4],
+            {"B": 99},
+        ])
+        file_path = tmp_path / "batch_wo.xlsx"
+        wb.save(file_path)
+
+        reloaded = load_workbook(file_path)
+        rows = list(reloaded["BatchSheet"].iter_rows(values_only=True))
+        assert len(rows) == 4
+        assert rows[0] == (1, 2)
+        assert rows[1] == (10, 20)
+        assert rows[2] == (3, 4)
+        assert rows[3] == (None, 99)
+
     def test_write_only_context_manager(self, tmp_path):
         file_path = tmp_path / "ctx_mgr.xlsx"
         with Workbook(write_only=True) as wb:

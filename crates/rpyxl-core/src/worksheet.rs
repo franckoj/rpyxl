@@ -523,10 +523,33 @@ impl Worksheet {
         }
 
         let mut rows = Vec::with_capacity((r_end - r_start + 1) as usize);
+        let mut cell_iter = self
+            .cells
+            .range((r_start, 1)..=(r_end, u32::MAX))
+            .peekable();
+
         for r in r_start..=r_end {
+            while let Some((&(row, col), _)) = cell_iter.peek() {
+                if row < r || (row == r && col < c_start) {
+                    cell_iter.next();
+                } else {
+                    break;
+                }
+            }
+
             let mut row_vals = Vec::with_capacity((c_end - c_start + 1) as usize);
             for c in c_start..=c_end {
-                row_vals.push(self.get_cell_value(r, c));
+                let is_match = match cell_iter.peek() {
+                    Some((&(row, col), _)) => row == r && col == c,
+                    None => false,
+                };
+                let val = if is_match {
+                    let (_, cell) = cell_iter.next().unwrap();
+                    cell.value.clone()
+                } else {
+                    CellValue::Empty
+                };
+                row_vals.push(val);
             }
             rows.push(row_vals);
         }

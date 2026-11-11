@@ -351,6 +351,36 @@ pub fn python_value_to_cell_value(val: &Bound<'_, PyAny>) -> PyResult<CellValue>
     }
 }
 
+pub fn dict_to_cell_row(dict: &Bound<'_, PyDict>) -> PyResult<Vec<CellValue>> {
+    let mut col_vals: Vec<(u32, CellValue)> = Vec::new();
+    for (k, v) in dict.iter() {
+        let col_idx: u32 = if let Ok(col_num) = k.extract::<u32>() {
+            if col_num < 1 {
+                return Err(PyValueError::new_err("Column values must be at least 1"));
+            }
+            col_num
+        } else if let Ok(col_str) = k.extract::<String>() {
+            rpyxl_core::coordinate::column_index_from_string(&col_str)
+                .map_err(map_rpyxl_err)?
+        } else {
+            return Err(PyTypeError::new_err(
+                "Dict keys in append must be column letters or integer column numbers",
+            ));
+        };
+        let val = python_value_to_cell_value(&v)?;
+        col_vals.push((col_idx, val));
+    }
+    col_vals.sort_by_key(|(col, _)| *col);
+    let max_c = col_vals.iter().map(|(c, _)| *c).max().unwrap_or(0);
+    let mut full_row = vec![CellValue::Empty; max_c as usize];
+    for (c, val) in col_vals {
+        if c >= 1 && (c as usize) <= full_row.len() {
+            full_row[(c - 1) as usize] = val;
+        }
+    }
+    Ok(full_row)
+}
+
 pub fn cell_value_to_python<'py>(py: Python<'py>, val: &CellValue) -> PyResult<Bound<'py, PyAny>> {
     match val {
         CellValue::Empty => Ok(py.None().into_bound(py)),
@@ -1066,47 +1096,16 @@ impl PyWorksheet {
     }
 
     pub fn append(&self, iterable: &Bound<'_, PyAny>) -> PyResult<u32> {
-        if let Ok(dict) = iterable.downcast::<PyDict>() {
-            let mut col_vals: Vec<(u32, CellValue)> = Vec::new();
-            for (k, v) in dict.iter() {
-                let col_idx: u32 = if let Ok(col_num) = k.extract::<u32>() {
-                    if col_num < 1 {
-                        return Err(PyValueError::new_err("Column values must be at least 1"));
-                    }
-                    col_num
-                } else if let Ok(col_str) = k.extract::<String>() {
-                    rpyxl_core::coordinate::column_index_from_string(&col_str)
-                        .map_err(map_rpyxl_err)?
-                } else {
-                    return Err(PyTypeError::new_err(
-                        "Dict keys in append must be column letters or integer column numbers",
-                    ));
-                };
-                let val = python_value_to_cell_value(&v)?;
-                col_vals.push((col_idx, val));
+        let full_row = if let Ok(dict) = iterable.downcast::<PyDict>() {
+            dict_to_cell_row(dict)?
+        } else {
+            let mut values = Vec::new();
+            for item in iterable.iter()? {
+                let item_val = item?;
+                values.push(python_value_to_cell_value(&item_val)?);
             }
-            col_vals.sort_by_key(|(col, _)| *col);
-            let max_c = col_vals.iter().map(|(c, _)| *c).max().unwrap_or(0);
-            let mut full_row = vec![CellValue::Empty; max_c as usize];
-            for (c, val) in col_vals {
-                if c >= 1 && (c as usize) <= full_row.len() {
-                    full_row[(c - 1) as usize] = val;
-                }
-            }
-            let mut wb = self.wb.write();
-            let title = self.sheet_title.read().clone();
-            let ws = wb
-                .get_sheet_mut(&title)
-                .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
-                .map_err(map_rpyxl_err)?;
-            return ws.append(full_row).map_err(map_rpyxl_err);
-        }
-
-        let mut values = Vec::new();
-        for item in iterable.iter()? {
-            let item_val = item?;
-            values.push(python_value_to_cell_value(&item_val)?);
-        }
+            values
+        };
 
         let mut wb = self.wb.write();
         let title = self.sheet_title.read().clone();
@@ -1114,7 +1113,7 @@ impl PyWorksheet {
             .get_sheet_mut(&title)
             .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
             .map_err(map_rpyxl_err)?;
-        ws.append(values).map_err(map_rpyxl_err)
+        ws.append(full_row).map_err(map_rpyxl_err)
     }
 
     pub fn append_rows(&self, rows: &Bound<'_, PyAny>) -> PyResult<u32> {
@@ -1122,33 +1121,7 @@ impl PyWorksheet {
         for row in rows.iter()? {
             let row = row?;
             if let Ok(dict) = row.downcast::<PyDict>() {
-                let mut col_vals: Vec<(u32, CellValue)> = Vec::new();
-                for (k, v) in dict.iter() {
-                    let col_idx: u32 = if let Ok(col_num) = k.extract::<u32>() {
-                        if col_num < 1 {
-                            return Err(PyValueError::new_err("Column values must be at least 1"));
-                        }
-                        col_num
-                    } else if let Ok(col_str) = k.extract::<String>() {
-                        rpyxl_core::coordinate::column_index_from_string(&col_str)
-                            .map_err(map_rpyxl_err)?
-                    } else {
-                        return Err(PyTypeError::new_err(
-                            "Dict keys in append must be column letters or integer column numbers",
-                        ));
-                    };
-                    let val = python_value_to_cell_value(&v)?;
-                    col_vals.push((col_idx, val));
-                }
-                col_vals.sort_by_key(|(col, _)| *col);
-                let max_c = col_vals.iter().map(|(c, _)| *c).max().unwrap_or(0);
-                let mut full_row = vec![CellValue::Empty; max_c as usize];
-                for (c, val) in col_vals {
-                    if c >= 1 && (c as usize) <= full_row.len() {
-                        full_row[(c - 1) as usize] = val;
-                    }
-                }
-                all_rows.push(full_row);
+                all_rows.push(dict_to_cell_row(dict)?);
             } else {
                 let mut values = Vec::new();
                 for item in row.iter()? {
@@ -1278,11 +1251,43 @@ impl PyWorksheet {
                 .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
                 .map_err(map_rpyxl_err)?;
 
+            let mut cell_iter = ws
+                .cells()
+                .range((r_start, 1)..=(r_end, u32::MAX))
+                .peekable();
+
             for r in r_start..=r_end {
+                while let Some((&(row, col), _)) = cell_iter.peek() {
+                    if row < r || (row == r && col < c_start) {
+                        cell_iter.next();
+                    } else {
+                        break;
+                    }
+                }
+
                 let mut row_vals = Vec::with_capacity((c_end - c_start + 1) as usize);
                 for c in c_start..=c_end {
-                    let val = ws.get_resolved_cell_value(r, c, data_only);
-                    row_vals.push(cell_value_to_python(py, &val)?);
+                    let is_match = match cell_iter.peek() {
+                        Some((&(row, col), _)) => row == r && col == c,
+                        None => false,
+                    };
+                    let cell_ref = if is_match {
+                        let (_, cell) = cell_iter.next().unwrap();
+                        Some(cell)
+                    } else {
+                        None
+                    };
+
+                    let val = match cell_ref {
+                        Some(cell) => match &cell.value {
+                            CellValue::Formula { cached_value, .. } if data_only => {
+                                cached_value.as_deref().unwrap_or(&CellValue::Empty)
+                            }
+                            _ => &cell.value,
+                        },
+                        None => &CellValue::Empty,
+                    };
+                    row_vals.push(cell_value_to_python(py, val)?);
                 }
                 rows.push(PyTuple::new_bound(py, row_vals));
             }
@@ -2480,11 +2485,16 @@ impl PyWriteOnlyWorksheet {
     }
 
     pub fn append(&self, iterable: &Bound<'_, PyAny>) -> PyResult<()> {
-        let mut values = Vec::new();
-        for item in iterable.iter()? {
-            let item_val = item?;
-            values.push(python_value_to_cell_value(&item_val)?);
-        }
+        let values = if let Ok(dict) = iterable.downcast::<PyDict>() {
+            dict_to_cell_row(dict)?
+        } else {
+            let mut vals = Vec::new();
+            for item in iterable.iter()? {
+                let item_val = item?;
+                vals.push(python_value_to_cell_value(&item_val)?);
+            }
+            vals
+        };
 
         let mut sheet = self.sheet.write();
         sheet.append_row(&values).map_err(map_rpyxl_err)
@@ -2495,14 +2505,23 @@ impl PyWriteOnlyWorksheet {
         let mut values = Vec::new();
         for row in rows.iter()? {
             let row = row?;
-            values.clear();
-            for item in row.iter()? {
-                let item_val = item?;
-                values.push(python_value_to_cell_value(&item_val)?);
+            if let Ok(dict) = row.downcast::<PyDict>() {
+                let full_row = dict_to_cell_row(dict)?;
+                sheet.append_row(&full_row).map_err(map_rpyxl_err)?;
+            } else {
+                values.clear();
+                for item in row.iter()? {
+                    let item_val = item?;
+                    values.push(python_value_to_cell_value(&item_val)?);
+                }
+                sheet.append_row(&values).map_err(map_rpyxl_err)?;
             }
-            sheet.append_row(&values).map_err(map_rpyxl_err)?;
         }
         Ok(())
+    }
+
+    pub fn extend(&self, rows: &Bound<'_, PyAny>) -> PyResult<()> {
+        self.append_rows(rows)
     }
 
     pub fn close(&self) -> PyResult<()> {

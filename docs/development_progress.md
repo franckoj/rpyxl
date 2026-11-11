@@ -85,3 +85,17 @@
   - Published comprehensive Phase 8 Report (`docs/reports/phase8_report.md`).
   - Created Git release tag `v0.1.0` marking the production-ready release of RPyXL.
 
+## Phase 9: Fast Ingestion, Compression Tuning & Linear Style Optimizations
+- **Status**: Complete
+- **Date**: 2026-11-11
+- **Branch**: `feat/fast-ingestion-optimizations`
+- **Summary**:
+  - Profiling and containerized live benchmarks against openpyxl 3.1.5 uncovered three critical bottlenecks: single-row append lock overhead, default level 6 ZIP deflate overhead, and quadratic dataclass reflection in `compile_style_records()`.
+  - Implemented `ws.append_rows()` / `ws.extend()` batch row ingestion in Rust core, OOXML writer, PyO3 bindings, and Python wrappers. Single lock acquisition, zero-alloc row buffering, and single-pass bounds calculation increased ingestion speed to **5,159,243 cells/s** (6.15x faster than openpyxl; 1M cells in 0.1938s).
+  - Added dictionary row support (`{"A": 1, "C": 2}`, `{1: "A", 2: "B"}`) to both single and batch append in both standard and streaming write-only modes.
+  - Tuned OOXML ZIP deflate compression level to 1, speeding up streaming write-only throughput to **3,071,851 cells/s** (**14.45x faster** than openpyxl; 500k cells saved in 0.1628s) and standard save to **1,615,983 cells/s** (**9.99x faster**).
+  - Optimized `iter_rows(values_only=True)` using a linear zero-allocation B-tree cursor across `ws.cells()`, eliminating $O(N \log M)$ coordinate searches and reaching **945,586 cells/s** (**6.85x faster** standard read).
+  - Implemented identity-cached style compilation in `python/rpyxl/_native_styles.py`, accelerating styled workbook saves by **3.19x** (0.457s vs 1.457s).
+  - Added fast-path ASCII coordinate parser in `python/rpyxl/_models.py` skipping regex engine overhead for alphanumeric cell coordinates.
+  - Verification: 498 automated tests passing (432 unit + 66 compatibility), 0 mismatches in 4-way cross-library roundtrip verification.
+

@@ -124,6 +124,27 @@ def test_iter_rows_values_only():
     assert sub_rows[1] == (5, 6)
 
 
+def test_iter_rows_values_only_sparse():
+    wb = Workbook()
+    ws = wb.active
+    ws["A1"] = "TopLeft"
+    ws["C1"] = "TopRight"
+    ws["B3"] = "MidBottom"
+    ws["D3"] = "FarRight"
+
+    rows = list(ws.iter_rows(values_only=True))
+    assert len(rows) == 3
+    assert rows[0] == ("TopLeft", None, "TopRight", None)
+    assert rows[1] == (None, None, None, None)
+    assert rows[2] == (None, "MidBottom", None, "FarRight")
+
+    # Sub-range within sparse matrix
+    sub = list(ws.iter_rows(min_row=1, max_row=2, min_col=1, max_col=3, values_only=True))
+    assert len(sub) == 2
+    assert sub[0] == ("TopLeft", None, "TopRight")
+    assert sub[1] == (None, None, None)
+
+
 def test_iter_rows_cells():
     wb = Workbook()
     ws = wb.active

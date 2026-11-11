@@ -131,3 +131,4 @@ print(tabulate([
     ["Write-Only Single Append Loop", f"{t_wo_single:.4f}s", f"{1000000 / t_wo_single:,.0f} cells/s", "1.00x"],
     ["Write-Only Batch append_rows()", f"{t_wo_batch:.4f}s", f"{1000000 / t_wo_batch:,.0f} cells/s", f"{t_wo_single / t_wo_batch:.2f}x faster"]
 ], headers=["Streaming Write Mode (1M cells)", "Time", "Throughput", "Gain"], tablefmt="github"))
+
