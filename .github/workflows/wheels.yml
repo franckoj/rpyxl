@@ -33,7 +33,7 @@ jobs:
                   path: dist
 
     macos:
-        runs-on: macos-14
+        runs-on: macos-15
         strategy:
             matrix:
                 target: [x86_64, aarch64]
@@ -125,10 +125,10 @@ jobs:
                     - os: ubuntu-latest
                       python: "3.14"
                       artifact: wheels-linux-x86_64
-                    - os: macos-14
+                    - os: macos-15
                       python: "3.11"
                       artifact: wheels-macos-aarch64
-                    - os: macos-14
+                    - os: macos-15
                       python: "3.14"
                       artifact: wheels-macos-aarch64
                     - os: windows-latest

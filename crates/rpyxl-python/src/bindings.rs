@@ -360,8 +360,7 @@ pub fn dict_to_cell_row(dict: &Bound<'_, PyDict>) -> PyResult<Vec<CellValue>> {
             }
             col_num
         } else if let Ok(col_str) = k.extract::<String>() {
-            rpyxl_core::coordinate::column_index_from_string(&col_str)
-                .map_err(map_rpyxl_err)?
+            rpyxl_core::coordinate::column_index_from_string(&col_str).map_err(map_rpyxl_err)?
         } else {
             return Err(PyTypeError::new_err(
                 "Dict keys in append must be column letters or integer column numbers",
