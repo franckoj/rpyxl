@@ -19,9 +19,8 @@ use rpyxl_core::workbook::Workbook;
 use rpyxl_ooxml::reader::{MAX_TOTAL_UNCOMPRESSED_SIZE, MAX_UNCOMPRESSED_FILE_SIZE};
 use rpyxl_ooxml::writer::{save_workbook_generated, write_workbook_generated};
 use rpyxl_ooxml::{
-    read_single_cell, save_workbook, save_write_only_workbook, write_workbook,
-    write_write_only_workbook, SharedStringsTable, SheetInfo, StreamingRowReader, Styles,
-    WriteOnlySheet, XlsxPackage,
+    read_single_cell, save_workbook, write_workbook, SharedStringsTable, SheetInfo,
+    StreamingRowReader, Styles, WriteOnlySheet, XlsxPackage,
 };
 
 type RichStyleInput = (
@@ -31,6 +30,8 @@ type RichStyleInput = (
     Option<String>,
     Option<String>,
 );
+
+type SheetStyleAssignments = (String, Vec<(u32, u32, usize)>);
 
 pub fn map_rpyxl_err(err: RpyxlError) -> PyErr {
     match err {
@@ -609,10 +610,10 @@ impl PyCell {
     pub fn value<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
         let wb = self.wb.read();
         let data_only = wb.is_data_only();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         let val = ws.get_resolved_cell_value(self.row, self.column, data_only);
         cell_value_to_python(py, &val)
@@ -622,10 +623,10 @@ impl PyCell {
     pub fn set_value(&self, new_val: &Bound<'_, PyAny>) -> PyResult<()> {
         let val = python_value_to_cell_value(new_val)?;
         let mut wb = self.wb.write();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet_mut(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet_mut(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         ws.set_cell_value(self.row, self.column, val)
             .map_err(map_rpyxl_err)?;
@@ -759,12 +760,29 @@ impl PyWorksheet {
             ));
         }
 
+        let title_guard = self.sheet_title.read();
+        let title = &*title_guard;
+
+        if value.is_none() {
+            let wb = self.wb.read();
+            if let Some(ws) = wb.get_sheet(title) {
+                if ws.get_cell(row, column).is_some() {
+                    return Ok(PyCell {
+                        wb: Arc::clone(&self.wb),
+                        original_package: self.original_package.clone(),
+                        sheet_title: Arc::clone(&self.sheet_title),
+                        row,
+                        column,
+                    });
+                }
+            }
+        }
+
         {
             let mut wb = self.wb.write();
-            let title = self.sheet_title.read().clone();
             let ws = wb
-                .get_sheet_mut(&title)
-                .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+                .get_sheet_mut(title)
+                .ok_or_else(|| RpyxlError::SheetNotFound(title.to_string()))
                 .map_err(map_rpyxl_err)?;
 
             if let Some(v) = value {
@@ -1411,6 +1429,49 @@ impl PyWorksheet {
     }
 }
 
+fn parse_style_assignments(assignments: &Bound<'_, PyAny>) -> PyResult<Vec<SheetStyleAssignments>> {
+    let mut grouped: Vec<SheetStyleAssignments> = Vec::new();
+    if let Ok(dict) = assignments.downcast::<PyDict>() {
+        for (k, v) in dict.iter() {
+            let title = k.extract::<String>()?;
+            let list = v.downcast::<PyList>()?;
+            let mut sheet_items = Vec::with_capacity(list.len());
+            for item in list.iter() {
+                let tuple = item.downcast::<PyTuple>()?;
+                let r: u32 = tuple.get_item(0)?.extract()?;
+                let c: u32 = tuple.get_item(1)?.extract()?;
+                let idx: usize = tuple.get_item(2)?.extract()?;
+                sheet_items.push((r, c, idx));
+            }
+            grouped.push((title, sheet_items));
+        }
+    } else if let Ok(list) = assignments.downcast::<PyList>() {
+        let mut last_title_opt: Option<(Bound<'_, PyAny>, usize)> = None;
+        for item in list.iter() {
+            let tuple = item.downcast::<PyTuple>()?;
+            let title_bound = tuple.get_item(0)?;
+            let r: u32 = tuple.get_item(1)?.extract()?;
+            let c: u32 = tuple.get_item(2)?.extract()?;
+            let idx: usize = tuple.get_item(3)?.extract()?;
+            if let Some((ref last_bound, group_idx)) = last_title_opt {
+                if title_bound.is(last_bound) {
+                    grouped[group_idx].1.push((r, c, idx));
+                    continue;
+                }
+            }
+            let title_str = title_bound.extract::<String>()?;
+            let group_idx = grouped.len();
+            grouped.push((title_str, vec![(r, c, idx)]));
+            last_title_opt = Some((title_bound, group_idx));
+        }
+    } else {
+        return Err(PyTypeError::new_err(
+            "assignments must be a list of tuples or dict of sheet assignments",
+        ));
+    }
+    Ok(grouped)
+}
+
 #[pyclass(name = "Workbook")]
 pub struct PyWorkbook {
     wb: Arc<RwLock<Workbook>>,
@@ -1440,6 +1501,16 @@ impl PyWorkbook {
     #[getter]
     pub fn data_only(&self) -> bool {
         self.wb.read().is_data_only()
+    }
+
+    #[getter]
+    pub fn compression_level(&self) -> Option<i32> {
+        self.wb.read().compression_level
+    }
+
+    #[setter]
+    pub fn set_compression_level(&mut self, level: Option<i32>) {
+        self.wb.write().compression_level = level;
     }
 
     #[getter]
@@ -1645,8 +1716,9 @@ impl PyWorkbook {
         &self,
         py: Python<'_>,
         records: Vec<RichStyleInput>,
-        assignments: Vec<(String, u32, u32, usize)>,
+        assignments: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
+        let grouped = parse_style_assignments(assignments)?;
         let styles: Vec<_> = records
             .into_iter()
             .map(|(font, fill, border, alignment, protection)| {
@@ -1663,27 +1735,36 @@ impl PyWorkbook {
         py.allow_threads(move || -> RpyxlResult<()> {
             let mut wb = workbook.write();
             // Validate the whole batch before changing any cells.
-            for (title, row, column, index) in &assignments {
+            for (title, sheet_assignments) in &grouped {
                 if wb.get_sheet(title).is_none() {
                     return Err(RpyxlError::SheetNotFound(title.clone()));
                 }
-                if !(1..=MAX_ROW).contains(row) {
-                    return Err(RpyxlError::RowOutOfBounds(*row));
-                }
-                if !(1..=MAX_COLUMN).contains(column) {
-                    return Err(RpyxlError::ColumnOutOfBounds(*column));
-                }
-                if *index >= styles.len() {
-                    return Err(RpyxlError::ValueError(
-                        "Invalid rich-style record index".into(),
-                    ));
+                for &(row, column, index) in sheet_assignments {
+                    if !(1..=MAX_ROW).contains(&row) {
+                        return Err(RpyxlError::RowOutOfBounds(row));
+                    }
+                    if !(1..=MAX_COLUMN).contains(&column) {
+                        return Err(RpyxlError::ColumnOutOfBounds(column));
+                    }
+                    if index >= styles.len() {
+                        return Err(RpyxlError::ValueError(
+                            "Invalid rich-style record index".into(),
+                        ));
+                    }
                 }
             }
-            for (title, row, column, index) in assignments {
+            for (title, sheet_assignments) in grouped {
                 let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
-                let cell = sheet.get_or_create_cell(row, column)?;
-                cell.rich_style = Some(Arc::clone(&styles[index]));
-                cell.source_xf_explicit = true;
+                for (row, column, index) in sheet_assignments {
+                    if let Some(cell) = sheet.get_cell_mut(row, column) {
+                        cell.rich_style = Some(Arc::clone(&styles[index]));
+                        cell.source_xf_explicit = true;
+                    } else {
+                        let cell = sheet.get_or_create_cell(row, column)?;
+                        cell.rich_style = Some(Arc::clone(&styles[index]));
+                        cell.source_xf_explicit = true;
+                    }
+                }
             }
             Ok(())
         })
@@ -1694,8 +1775,9 @@ impl PyWorkbook {
         &self,
         py: Python<'_>,
         records: Vec<RichStyleInput>,
-        assignments: Vec<(String, u32, u32, usize)>,
+        assignments: &Bound<'_, PyAny>,
     ) -> PyResult<()> {
+        let grouped = parse_style_assignments(assignments)?;
         let styles: Vec<_> = records
             .into_iter()
             .map(|(font, fill, border, alignment, protection)| {
@@ -1712,30 +1794,39 @@ impl PyWorkbook {
         py.allow_threads(move || -> RpyxlResult<()> {
             let mut wb = workbook.write();
             // Validate the complete replacement before clearing or creating cells.
-            for (title, row, column, index) in &assignments {
+            for (title, sheet_assignments) in &grouped {
                 if wb.get_sheet(title).is_none() {
                     return Err(RpyxlError::SheetNotFound(title.clone()));
                 }
-                if !(1..=MAX_ROW).contains(row) {
-                    return Err(RpyxlError::RowOutOfBounds(*row));
-                }
-                if !(1..=MAX_COLUMN).contains(column) {
-                    return Err(RpyxlError::ColumnOutOfBounds(*column));
-                }
-                if *index >= styles.len() {
-                    return Err(RpyxlError::ValueError(
-                        "Invalid rich-style record index".into(),
-                    ));
+                for &(row, column, index) in sheet_assignments {
+                    if !(1..=MAX_ROW).contains(&row) {
+                        return Err(RpyxlError::RowOutOfBounds(row));
+                    }
+                    if !(1..=MAX_COLUMN).contains(&column) {
+                        return Err(RpyxlError::ColumnOutOfBounds(column));
+                    }
+                    if index >= styles.len() {
+                        return Err(RpyxlError::ValueError(
+                            "Invalid rich-style record index".into(),
+                        ));
+                    }
                 }
             }
             for sheet in wb.sheets_mut() {
                 sheet.clear_rich_styles();
             }
-            for (title, row, column, index) in assignments {
+            for (title, sheet_assignments) in grouped {
                 let sheet = wb.get_sheet_mut(&title).expect("validated worksheet");
-                let cell = sheet.get_or_create_cell(row, column)?;
-                cell.rich_style = Some(Arc::clone(&styles[index]));
-                cell.source_xf_explicit = true;
+                for (row, column, index) in sheet_assignments {
+                    if let Some(cell) = sheet.get_cell_mut(row, column) {
+                        cell.rich_style = Some(Arc::clone(&styles[index]));
+                        cell.source_xf_explicit = true;
+                    } else {
+                        let cell = sheet.get_or_create_cell(row, column)?;
+                        cell.rich_style = Some(Arc::clone(&styles[index]));
+                        cell.source_xf_explicit = true;
+                    }
+                }
             }
             Ok(())
         })
@@ -2555,6 +2646,7 @@ impl PyWriteOnlyWorksheet {
 pub struct PyWriteOnlyWorkbook {
     sheets: Vec<Arc<RwLock<WriteOnlySheet>>>,
     closed: bool,
+    compression_level: Option<i32>,
 }
 
 #[pymethods]
@@ -2564,7 +2656,18 @@ impl PyWriteOnlyWorkbook {
         Self {
             sheets: Vec::new(),
             closed: false,
+            compression_level: None,
         }
+    }
+
+    #[getter]
+    pub fn compression_level(&self) -> Option<i32> {
+        self.compression_level
+    }
+
+    #[setter]
+    pub fn set_compression_level(&mut self, level: Option<i32>) {
+        self.compression_level = level;
     }
 
     #[getter]
@@ -2677,6 +2780,7 @@ impl PyWriteOnlyWorkbook {
             check_binary_writer(path)?;
         }
         let sheets = self.sheets.clone();
+        let level = self.compression_level;
         let bytes = py
             .allow_threads(move || {
                 // Acquire and drop every native lock while detached from Python.
@@ -2684,11 +2788,19 @@ impl PyWriteOnlyWorkbook {
                 let mut refs: Vec<&mut WriteOnlySheet> =
                     sheet_guards.iter_mut().map(|g| &mut **g).collect();
                 if let Some(destination) = destination {
-                    save_write_only_workbook(destination, &mut refs)?;
+                    rpyxl_ooxml::save_write_only_workbook_with_compression(
+                        destination,
+                        &mut refs,
+                        level,
+                    )?;
                     Ok::<_, RpyxlError>(None)
                 } else {
                     let mut buffer = Cursor::new(Vec::new());
-                    write_write_only_workbook(&mut buffer, &mut refs)?;
+                    rpyxl_ooxml::write_write_only_workbook_with_compression(
+                        &mut buffer,
+                        &mut refs,
+                        level,
+                    )?;
                     Ok(Some(buffer.into_inner()))
                 }
             })

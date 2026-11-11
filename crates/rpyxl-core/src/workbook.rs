@@ -19,6 +19,7 @@ pub struct Workbook {
     pub source_styles_xml: Option<String>,
     source_styles: Vec<Arc<RichStyle>>,
     source_style_ids: HashMap<usize, usize>,
+    pub compression_level: Option<i32>,
 }
 
 impl PartialEq for Workbook {
@@ -32,6 +33,7 @@ impl PartialEq for Workbook {
             && self.package_template == other.package_template
             && self.source_styles_xml == other.source_styles_xml
             && self.source_styles == other.source_styles
+            && self.compression_level == other.compression_level
     }
 }
 
@@ -54,6 +56,7 @@ impl Workbook {
             source_styles_xml: None,
             source_styles: Vec::new(),
             source_style_ids: HashMap::new(),
+            compression_level: None,
         }
     }
 
@@ -68,6 +71,7 @@ impl Workbook {
             source_styles_xml: None,
             source_styles: Vec::new(),
             source_style_ids: HashMap::new(),
+            compression_level: None,
         }
     }
 

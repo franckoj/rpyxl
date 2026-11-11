@@ -85,15 +85,31 @@ class Worksheet:
             return self._native._is_merged_cell(row, col)
         book = self.parent._book
         metadata = book.sheets.get(self.title) if book is not None else None
-        if metadata is not None:
+        if metadata is not None and metadata.merged_cells.ranges:
             for merged in metadata.merged_cells:
-                c1, r1, c2, r2 = range_bounds(str(merged))
+                bounds = getattr(merged, "bounds", None)
+                if bounds is None:
+                    bounds = range_bounds(str(merged))
+                c1, r1, c2, r2 = bounds
                 if c1 <= col <= c2 and r1 <= row <= r2:
                     return (col, row) != (c1, r1)
         return False
 
-    def _wrap_cell(self, native):
-        cls = MergedCell if self._is_merged(native.column, native.row) else Cell
+    def _wrap_cell(self, native, row=None, column=None):
+        if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
+            r = row if row is not None else native.row
+            c = column if column is not None else native.column
+            is_merged = self._native._is_merged_cell(r, c)
+        else:
+            book = self.parent._book
+            metadata = book.sheets.get(self.title) if book is not None else None
+            if metadata is not None and metadata.merged_cells.ranges:
+                r = row if row is not None else native.row
+                c = column if column is not None else native.column
+                is_merged = self._is_merged(c, r)
+            else:
+                is_merged = False
+        cls = MergedCell if is_merged else Cell
         return cls(self, native)
 
     def _wrap_result(self, result):
@@ -102,13 +118,16 @@ class Worksheet:
         return self._wrap_cell(result)
 
     def cell(self, row, column, value=None):
-        coordinate(column, row)
+        if not (1 <= row <= 1048576 and 1 <= column <= 16384):
+            if not 1 <= row <= 1048576:
+                raise ValueError("Row outside Excel limits")
+            raise ValueError("Column outside Excel limits")
         if self.parent.write_only:
             raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'cell'")
         if self.parent.read_only and value is not None:
             self._check_writable()
         native = self._native.cell(row=row, column=column)
-        cell = self._wrap_cell(native)
+        cell = self._wrap_cell(native, row=row, column=column)
         if value is not None:
             cell.value = value
         return cell

@@ -54,7 +54,10 @@ def cell_metadata_property(name):
         coordinate = self.coordinate
         metadata = cells.get(coordinate)
         if metadata is None:
-            metadata = cells[coordinate] = CellMetadata()
+            metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
+        elif not metadata.row:
+            metadata.row = self.row
+            metadata.column = self.column
         value = getattr(metadata, name)
         workbook = self.parent.parent
         pool = workbook._style_pool
@@ -84,7 +87,10 @@ def cell_metadata_property(name):
         coordinate = self.coordinate
         metadata = cells.get(coordinate)
         if metadata is None:
-            metadata = cells[coordinate] = CellMetadata()
+            metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
+        elif not metadata.row:
+            metadata.row = self.row
+            metadata.column = self.column
         store(metadata, pool.assign(value))
 
     return property(get, set)

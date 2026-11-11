@@ -102,9 +102,10 @@ fn write_workbook_with_styles<W: Write + Seek>(
     styles: &StyleTables,
 ) -> RpyxlResult<()> {
     let mut zip = ZipWriter::new(writer);
+    let level = wb.compression_level.unwrap_or(6);
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(1));
+        .compression_level(Some(level.into()));
 
     // 1. _rels/.rels
     zip.start_file("_rels/.rels", options)
@@ -247,10 +248,10 @@ fn relationship_target(relationship: &XmlElement, base: &str, kind: &str) -> Rpy
         .attributes
         .get("TargetMode")
         .is_some_and(|mode| mode != "Internal")
-        || !relationship
+        || relationship
             .attributes
             .get("Type")
-            .is_some_and(|value| value.rsplit('/').next() == Some(kind))
+            .is_none_or(|value| value.rsplit('/').next() != Some(kind))
     {
         return Err(template_error(format!("invalid {kind} relationship")));
     }
@@ -1312,9 +1313,10 @@ fn write_preserved_package<W: Write + Seek>(
     }
     let mut zip = ZipWriter::new(writer);
     zip.set_raw_comment(archive.comment().to_vec().into_boxed_slice());
+    let level = wb.compression_level.unwrap_or(6);
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(1));
+        .compression_level(Some(level.into()));
     for index in 0..archive.len() {
         let file = archive.by_index_raw(index).map_err(template_error)?;
         if let Some(xml) = replacements.get(file.name()) {
@@ -1402,10 +1404,18 @@ pub fn save_write_only_workbook<P: AsRef<Path>>(
     path: P,
     sheets: &mut [&mut WriteOnlySheet],
 ) -> RpyxlResult<()> {
+    save_write_only_workbook_with_compression(path, sheets, None)
+}
+
+pub fn save_write_only_workbook_with_compression<P: AsRef<Path>>(
+    path: P,
+    sheets: &mut [&mut WriteOnlySheet],
+    compression_level: Option<i32>,
+) -> RpyxlResult<()> {
     let file = File::create(path.as_ref())
         .map_err(|e| RpyxlError::IoError(format!("Failed to create file: {}", e)))?;
     let writer = BufWriter::new(file);
-    write_write_only_workbook(writer, sheets)
+    write_write_only_workbook_with_compression(writer, sheets, compression_level)
 }
 
 pub fn save_write_only_workbook_slice<P: AsRef<Path>>(
@@ -1420,6 +1430,14 @@ pub fn write_write_only_workbook<W: Write + Seek>(
     writer: W,
     sheets: &mut [&mut WriteOnlySheet],
 ) -> RpyxlResult<()> {
+    write_write_only_workbook_with_compression(writer, sheets, None)
+}
+
+pub fn write_write_only_workbook_with_compression<W: Write + Seek>(
+    writer: W,
+    sheets: &mut [&mut WriteOnlySheet],
+    compression_level: Option<i32>,
+) -> RpyxlResult<()> {
     if sheets.is_empty() {
         return Err(RpyxlError::ValueError(
             "Cannot save empty write-only workbook".to_string(),
@@ -1427,9 +1445,10 @@ pub fn write_write_only_workbook<W: Write + Seek>(
     }
 
     let mut zip = ZipWriter::new(writer);
+    let level = compression_level.unwrap_or(6);
     let options = SimpleFileOptions::default()
         .compression_method(CompressionMethod::Deflated)
-        .compression_level(Some(1));
+        .compression_level(Some(level.into()));
 
     // 1. _rels/.rels
     zip.start_file("_rels/.rels", options)
@@ -2500,10 +2519,9 @@ impl NativeStyleTables {
                                 updates.push((apply, "1".into()));
                             }
                         }
-                        let fragment = clone_native_xf(xml, node, &updates, &children)?;
                         // Original prefixes may be declared on the stylesheet or group.
                         // Parse/deduplicate in that exact namespace context below.
-                        fragment
+                        clone_native_xf(xml, node, &updates, &children)?
                     } else {
                         let style = cell.rich_style.as_deref();
                         let font = style
@@ -2665,6 +2683,18 @@ struct StyleTables {
     xf_ids: HashMap<(usize, usize), usize>,
 }
 
+#[inline(always)]
+fn is_date_value(val: &CellValue) -> bool {
+    match val {
+        CellValue::Date(_) | CellValue::DateTime(_) => true,
+        CellValue::Formula {
+            cached_value: Some(cached),
+            ..
+        } => matches!(**cached, CellValue::Date(_) | CellValue::DateTime(_)),
+        _ => false,
+    }
+}
+
 impl StyleTables {
     fn new(formats: Vec<String>) -> Self {
         let mut tables = Self {
@@ -2732,11 +2762,17 @@ impl StyleTables {
         // Keep explicit rich defaults separate from an unstyled cell, but merge
         // rich styles whose optional components resolve to the same table IDs.
         let mut component_ids: HashMap<RichComponents, usize> = HashMap::new();
+        let mut last_rich_ptr = usize::MAX;
+        let mut last_rich_id = 0usize;
         for ws in wb.sheets() {
             for cell in ws.cells().values() {
                 let rich_id = if let Some(style) = &cell.rich_style {
                     let pointer = Arc::as_ptr(style) as usize;
-                    if let Some(&id) = tables.rich_pointers.get(&pointer) {
+                    if pointer == last_rich_ptr {
+                        last_rich_id
+                    } else if let Some(&id) = tables.rich_pointers.get(&pointer) {
+                        last_rich_ptr = pointer;
+                        last_rich_id = id;
                         id
                     } else {
                         let id = if let Some(&id) = rich_ids.get(style) {
@@ -2782,20 +2818,29 @@ impl StyleTables {
                             id
                         };
                         tables.rich_pointers.insert(pointer, id);
+                        last_rich_ptr = pointer;
+                        last_rich_id = id;
                         id
                     }
                 } else {
                     0
                 };
-                let code = effective_number_format(&cell.value, cell.number_format.as_deref());
-                let format_id = if let Some(&id) = tables.format_ids.get(code) {
-                    id
+                let format_id = if cell.number_format.is_none() && !is_date_value(&cell.value) {
+                    0
                 } else {
-                    let id = tables.formats.len();
-                    tables.formats.push(code.to_owned());
-                    tables.format_ids.insert(code.to_owned(), id);
-                    id
+                    let code = effective_number_format(&cell.value, cell.number_format.as_deref());
+                    if let Some(&id) = tables.format_ids.get(code) {
+                        id
+                    } else {
+                        let id = tables.formats.len();
+                        tables.formats.push(code.to_owned());
+                        tables.format_ids.insert(code.to_owned(), id);
+                        id
+                    }
                 };
+                if format_id == 0 && rich_id == 0 {
+                    continue;
+                }
                 let next_xf = tables.xfs.len();
                 tables
                     .xf_ids
@@ -2809,18 +2854,26 @@ impl StyleTables {
         Ok(tables)
     }
 
+    #[inline(always)]
     fn cell_style(&self, cell: &Cell) -> usize {
         if let Some(native) = &self.native {
             return native.cell_style(cell);
         }
-        let code = effective_number_format(&cell.value, cell.number_format.as_deref());
-        let format_id = self.format_ids[code];
-        let rich_id = cell
-            .rich_style
-            .as_ref()
-            .map(|style| self.rich_pointers[&(Arc::as_ptr(style) as usize)])
-            .unwrap_or(0);
-        self.xf_ids[&(format_id, rich_id)]
+        let rich_id = match &cell.rich_style {
+            Some(style) => self.rich_pointers[&(Arc::as_ptr(style) as usize)],
+            None => 0,
+        };
+        let format_id = if cell.number_format.is_none() && !is_date_value(&cell.value) {
+            0
+        } else {
+            let code = effective_number_format(&cell.value, cell.number_format.as_deref());
+            self.format_ids[code]
+        };
+        if format_id == 0 && rich_id == 0 {
+            0
+        } else {
+            self.xf_ids[&(format_id, rich_id)]
+        }
     }
 
     fn to_xml(&self) -> String {
@@ -2957,6 +3010,11 @@ fn generate_worksheet_xml(
 
     let mut itoa_buf = itoa::Buffer::new();
     let mut current_row = 0;
+    let mut last_rich_ptr = usize::MAX;
+    let mut last_eff_fmt: Option<&str> = None;
+    let mut last_xf_idx: Option<usize> = None;
+    let mut last_style = 0usize;
+
     for (&(r, c), cell) in ws.cells() {
         if r != current_row {
             if current_row != 0 {
@@ -2967,7 +3025,28 @@ fn generate_worksheet_xml(
             s.push_str(itoa_buf.format(r));
             s.push_str("\">");
         }
-        let style = styles.cell_style(cell);
+        let rich_ptr = cell
+            .rich_style
+            .as_ref()
+            .map_or(0, |style| Arc::as_ptr(style) as usize);
+        let num_fmt = cell.number_format.as_deref();
+        let eff_fmt = effective_number_format(&cell.value, num_fmt);
+        let xf_idx = cell.source_xf_index();
+        let style = if styles.native.is_none() && rich_ptr == 0 && eff_fmt == "General" {
+            0
+        } else if rich_ptr == last_rich_ptr
+            && Some(eff_fmt) == last_eff_fmt
+            && xf_idx == last_xf_idx
+        {
+            last_style
+        } else {
+            let st = styles.cell_style(cell);
+            last_style = st;
+            last_rich_ptr = rich_ptr;
+            last_eff_fmt = Some(eff_fmt);
+            last_xf_idx = xf_idx;
+            st
+        };
         write_workbook_cell(r, c, cell, &mut s, style, date_1904);
     }
     if current_row != 0 {

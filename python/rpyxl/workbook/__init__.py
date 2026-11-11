@@ -94,6 +94,15 @@ class Workbook(metaclass=_WorkbookMeta):
     def write_only(self):
         return getattr(self._native, "write_only", False)
 
+    @property
+    def compression_level(self):
+        return getattr(self._native, "compression_level", None)
+
+    @compression_level.setter
+    def compression_level(self, value):
+        if hasattr(self._native, "compression_level"):
+            self._native.compression_level = value
+
     def _check_writable(self):
         if self._closed:
             raise ValueError("Workbook is closed")
@@ -340,8 +349,10 @@ class Workbook(metaclass=_WorkbookMeta):
             metadata.title = worksheet.title
             book.sheets[worksheet.title] = metadata
 
-    def save(self, filename):
+    def save(self, filename, compression_level=None):
         self._check_writable()
+        if compression_level is not None:
+            self.compression_level = compression_level
         if self._native_style_reader is not None:
             self._native_style_reader.flush()
         needs_overlay = None

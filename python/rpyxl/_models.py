@@ -442,14 +442,17 @@ class CellMetadata:
     hyperlink: Any = None
     comment: Comment | None = None
     style_dirty: bool = False
+    row: int = 0
+    column: int = 0
 
 
 @dataclass(frozen=True)
 class CellRange:
     coord: str
+    bounds: tuple[int, int, int, int] = field(init=False, repr=False)
 
     def __post_init__(self):
-        range_bounds(self.coord)
+        object.__setattr__(self, "bounds", range_bounds(self.coord))
 
     def __str__(self):
         return self.coord

@@ -10,7 +10,9 @@ from ._style_pool import FrozenStyle, unwrap_style
 from .styles import STYLE_INTERNAL_FIELDS, _StyleModel
 
 _STYLE_FIELDS = ("font", "fill", "border", "alignment", "protection")
-_NATIVE_CELL_FIELDS = frozenset((*_STYLE_FIELDS, "style_dirty", "hyperlink", "comment"))
+_NATIVE_CELL_FIELDS = frozenset(
+    (*_STYLE_FIELDS, "style_dirty", "hyperlink", "comment", "row", "column")
+)
 
 
 @lru_cache(maxsize=64)

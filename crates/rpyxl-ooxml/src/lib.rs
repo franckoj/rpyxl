@@ -10,6 +10,7 @@ pub use reader::{
 pub use shared_strings::SharedStringsTable;
 pub use styles::Styles;
 pub use writer::{
-    save_workbook, save_write_only_workbook, write_workbook, write_write_only_workbook,
+    save_workbook, save_write_only_workbook, save_write_only_workbook_with_compression,
+    write_workbook, write_write_only_workbook, write_write_only_workbook_with_compression,
     WriteOnlySheet,
 };

@@ -25,4 +25,5 @@ build/
 
 # Benchmark artifacts
 benchmarks/data/
+.tools/
 
