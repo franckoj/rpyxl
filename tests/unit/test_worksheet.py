@@ -72,6 +72,37 @@ def test_worksheet_append():
     assert ws["C2"].value is False
 
 
+def test_worksheet_append_rows():
+    wb = Workbook()
+    ws = wb.active
+
+    batch = [
+        ["ROW1", 100, True],
+        ["ROW2", 200, False],
+        {"A": "ROW3_DICT", "C": 300},
+    ]
+
+    ws.append_rows(batch)
+
+    assert ws.max_row == 3
+    assert ws.max_column == 3
+    assert ws["A1"].value == "ROW1"
+    assert ws["B1"].value == 100
+    assert ws["C1"].value is True
+    assert ws["A2"].value == "ROW2"
+    assert ws["B2"].value == 200
+    assert ws["C2"].value is False
+    assert ws["A3"].value == "ROW3_DICT"
+    assert ws["B3"].value is None
+    assert ws["C3"].value == 300
+
+    # Test extend alias
+    ws.extend([["EXTEND1", 999]])
+    assert ws.max_row == 4
+    assert ws["A4"].value == "EXTEND1"
+    assert ws["B4"].value == 999
+
+
 def test_iter_rows_values_only():
     wb = Workbook()
     ws = wb.active

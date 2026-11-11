@@ -1385,6 +1385,13 @@ impl WriteOnlySheet {
             .map_err(|e| RpyxlError::IoError(format!("Write error: {}", e)))?;
         Ok(())
     }
+
+    pub fn append_rows(&mut self, rows: &[Vec<CellValue>]) -> RpyxlResult<()> {
+        for row in rows {
+            self.append_row(row)?;
+        }
+        Ok(())
+    }
 }
 
 pub fn save_write_only_workbook<P: AsRef<Path>>(

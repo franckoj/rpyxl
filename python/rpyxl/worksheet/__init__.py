@@ -131,6 +131,15 @@ class Worksheet:
         self._check_writable()
         return self._native.append(iterable)
 
+    def append_rows(self, iterable_of_rows):
+        """Append multiple rows in a high-performance single FFI crossing."""
+        self._check_writable()
+        return self._native.append_rows(iterable_of_rows)
+
+    def extend(self, iterable_of_rows):
+        """Python collection protocol alias for append_rows."""
+        return self.append_rows(iterable_of_rows)
+
     def iter_rows(
         self, min_row=None, max_row=None, min_col=None, max_col=None, values_only=False
     ):

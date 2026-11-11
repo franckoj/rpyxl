@@ -440,6 +440,72 @@ impl Worksheet {
         Ok(target_row)
     }
 
+    pub fn append_rows(&mut self, rows: Vec<Vec<CellValue>>) -> RpyxlResult<u32> {
+        if rows.is_empty() {
+            return Ok(self.max_row());
+        }
+
+        let mut current_row = if self.is_empty() {
+            MIN_ROW
+        } else {
+            self.max_row() + 1
+        };
+
+        let mut max_col_seen = self.cached_max_col.unwrap_or(MIN_COLUMN);
+
+        for row_values in rows {
+            if current_row > MAX_ROW {
+                return Err(RpyxlError::RowOutOfBounds(current_row));
+            }
+            if row_values.is_empty() {
+                current_row += 1;
+                continue;
+            }
+            for (idx, val) in row_values.into_iter().enumerate() {
+                let col = (idx as u32) + 1;
+                if col > MAX_COLUMN {
+                    return Err(RpyxlError::ColumnOutOfBounds(col));
+                }
+                if col > max_col_seen {
+                    max_col_seen = col;
+                }
+                let cell = self
+                    .cells
+                    .entry((current_row, col))
+                    .or_insert_with(|| Cell::new(current_row, col, CellValue::Empty));
+                if cell
+                    .number_format
+                    .as_deref()
+                    .is_none_or(|code| code == "General")
+                {
+                    let temporal_format = match &val {
+                        CellValue::Date(_) => Some("yyyy-mm-dd"),
+                        CellValue::DateTime(text) if !text.contains('-') => Some("h:mm:ss.000"),
+                        CellValue::DateTime(_) => Some("yyyy-mm-dd h:mm:ss.000"),
+                        _ => None,
+                    };
+                    if let Some(code) = temporal_format {
+                        cell.number_format = Some(code.to_string());
+                    }
+                }
+                cell.value = val;
+            }
+            current_row += 1;
+        }
+
+        let last_row = current_row - 1;
+        if self.cached_min_row.is_none() {
+            self.cached_min_row = Some(MIN_ROW);
+        }
+        self.cached_max_row = Some(self.cached_max_row.map_or(last_row, |r| r.max(last_row)));
+        if self.cached_min_col.is_none() {
+            self.cached_min_col = Some(MIN_COLUMN);
+        }
+        self.cached_max_col = Some(max_col_seen);
+
+        Ok(last_row)
+    }
+
     pub fn iter_rows_values(
         &self,
         min_row: Option<u32>,
