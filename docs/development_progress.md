@@ -98,4 +98,5 @@
   - Implemented identity-cached style compilation in `python/rpyxl/_native_styles.py`, accelerating styled workbook saves by **3.19x** (0.457s vs 1.457s).
   - Added fast-path ASCII coordinate parser in `python/rpyxl/_models.py` skipping regex engine overhead for alphanumeric cell coordinates.
   - Verification: 498 automated tests passing (432 unit + 66 compatibility), 0 mismatches in 4-way cross-library roundtrip verification.
+  - Created Git release tag `v0.3.0` marking the high-performance release of RPyXL.
 

@@ -7,9 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [Unreleased / 0.2.1-dev] - Fast Ingestion, Compression Tuning & Linear Style Optimization
+## [0.3.0] - 2026-11-11
 
-This release cycle implements high-leverage bottlenecks identified through live, containerized side-by-side benchmarking against openpyxl 3.1.5.
+This release implements high-leverage ingestion, compression, and style serialization speedups identified through live containerized benchmarking against openpyxl 3.1.5.
 
 ### Added
 - **Native Batch Append**: Added `ws.append_rows(rows)` and alias `ws.extend(rows)` to `Worksheet` (core, python bindings, wrapper) and `WriteOnlyWorksheet`. Implements lock acquisition once per batch, zero-alloc row buffering, and single-pass bounding box expansion. Ingestion speed surged to **5,159,243 cells/sec** (6.15x faster than openpyxl; 1,000,000 cells ingested in 0.1938s).
