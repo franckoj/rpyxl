@@ -112,28 +112,46 @@ def compile_style_records(metadata_book):
     """
     records, assignments = [], []
     components, indices = {}, {}
+    identity_cache = {}
     if metadata_book is None:
         return records, assignments
     for title, sheet in metadata_book.sheets.items():
         for coordinate, cell in sheet.cells.items():
-            values = tuple(getattr(cell, name) for name in _STYLE_FIELDS)
-            if all(value is None for value in values) and not cell.style_dirty:
+            font = cell.font
+            fill = cell.fill
+            border = cell.border
+            alignment = cell.alignment
+            protection = cell.protection
+            if (
+                font is None
+                and fill is None
+                and border is None
+                and alignment is None
+                and protection is None
+                and not cell.style_dirty
+            ):
                 continue
-            key = tuple(_snapshot(value) for value in values)
-            if key not in indices:
-                record = []
-                for name, value, snapshot in zip(_STYLE_FIELDS, values, key):
-                    if value is None:
-                        record.append(None)
-                        continue
-                    component_key = (name, snapshot)
-                    if component_key not in components:
-                        components[component_key] = _component_xml(name, value)
-                    record.append(components[component_key])
-                indices[key] = len(records)
-                records.append(tuple(record))
+            id_key = (id(font), id(fill), id(border), id(alignment), id(protection))
+            rec_idx = identity_cache.get(id_key)
+            if rec_idx is None:
+                values = (font, fill, border, alignment, protection)
+                key = tuple(_snapshot(value) for value in values)
+                if key not in indices:
+                    record = []
+                    for name, value, snapshot in zip(_STYLE_FIELDS, values, key):
+                        if value is None:
+                            record.append(None)
+                            continue
+                        component_key = (name, snapshot)
+                        if component_key not in components:
+                            components[component_key] = _component_xml(name, value)
+                        record.append(components[component_key])
+                    indices[key] = len(records)
+                    records.append(tuple(record))
+                rec_idx = indices[key]
+                identity_cache[id_key] = rec_idx
             col, row = coordinate_parts(coordinate)
-            assignments.append((title, row, col, indices[key]))
+            assignments.append((title, row, col, rec_idx))
     return records, assignments
 
 

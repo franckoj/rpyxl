@@ -50,7 +50,23 @@ def column_letter(index):
 
 
 def coordinate_parts(value):
-    match = re.fullmatch(r"\$?([A-Za-z]{1,3})\$?([1-9][0-9]*)", str(value))
+    s = str(value)
+    # Fast-path ASCII coordinates (e.g. 'A1', 'B2', 'AA100') bypassing regex
+    if s and s[0].isalpha():
+        col_end = 1
+        while col_end < len(s) and s[col_end].isalpha():
+            col_end += 1
+        if 1 <= col_end <= 3:
+            row_part = s[col_end:]
+            if row_part.isdigit() and row_part[0] != "0":
+                r = int(row_part)
+                if r <= 1048576:
+                    c = 0
+                    for ch in s[:col_end].upper():
+                        c = c * 26 + (ord(ch) - 64)
+                    if 1 <= c <= 16384:
+                        return c, r
+    match = re.fullmatch(r"\$?([A-Za-z]{1,3})\$?([1-9][0-9]*)", s)
     if not match or int(match[2]) > 1048576:
         raise ValueError(f"Invalid cell coordinate: {value!r}")
     return column_index(match[1]), int(match[2])
