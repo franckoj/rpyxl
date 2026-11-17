@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.4.0] - 2026-11-17
+
+This release delivers major performance optimizations across cell access, streaming iteration, styled worksheet serialization, and configurable compression, alongside enhanced developer tooling and comprehensive benchmark suites.
+
+### Added
+- **Native Streaming Row & Column Iterators**: Implemented `PyWorksheetRowIterator` and `PyWorksheetColIterator` in Rust (`rpyxl-python/src/bindings.rs`). Iterating over rows via `ws.iter_rows(values_only=False)` or columns via `ws.iter_cols()` now makes a single native call that yields row/column tuples lazily without materializing full grids or issuing redundant cross-FFI calls per row (1.49x faster cell row traversal, 817k cells/s).
+- **Versioned `PyCell` Value Caching**: Added workbook version tracking (`Workbook.version`) and thread-safe cell value caching in `PyCell.cached_value`. Repeated cell value reads bypass sheet RwLock acquisition and map lookup when unchanged, accelerating cell reads by **1.67x** (up to 592k cells/s).
+- **Configurable Deflate Compression**: Added `compression_level` property to `Workbook` and `WriteOnlyWorkbook`, and support in `wb.save(filename, compression_level=...)`. Defaults to standard level 6, shrinking archive sizes by **31% to 34%** while preserving high-speed saving.
+- **Full Test Suite & Benchmark Harness**: Added `benchmarks/benchmark.py` and `benchmarks/full_test_openpyxl_vs_rpyxl.py` covering 7 testing sections (`compat`, `interop`, `perf`, `scale`, `threads`, `concurrency`, `leak`) across 20 granular performance scenarios.
+- **Styled Sweep Benchmark**: Added `benchmarks/bench_styled_sweep.py` for profiling build, save, memory, and archive size scaling up to 500k rows.
+
+### Changed & Optimized
+- **Inline XML Style Serialization Caching**: In `rpyxl-ooxml/src/writer.rs`, implemented consecutive cell style caching (`last_rich_ptr`, `last_eff_fmt`, `last_xf_idx`, `last_style`) in `generate_worksheet_xml`. Sequential cells sharing styles avoid map lookups, speeding up styled worksheet XML emission.
+- **Fast-Path General Formats**: Non-date cells without explicit number formats immediately resolve to `format_id = 0`, bypassing number format resolution maps.
+- **Integer Coordinate Bounds Check**: Replaced regex and string formatting coordinate checks in `ws.cell()` with direct integer boundary checks (`1 <= row <= 1048576 and 1 <= column <= 16384`), boosting individual cell writes by **1.43x** (up to 325k cells/s).
+- **Merged Cell Range Fast-Path**: Worksheets without merged cells (`_may_have_merges == False`) bypass merge range containment searches entirely when wrapping cells. Pre-parsed `bounds` tuples are cached directly on `CellRange` instances.
+- **Zero-Allocation Sheet Title Access**: Replaced per-cell `Arc<RwLock<String>>` cloning with direct reference borrowing in Python cell bindings.
+- **Code Quality & CI Tooling**: Integrated Ruff linting and formatting across `python/`, `tests/`, and `benchmarks/`, and codified pre-push feature branch quality gates.
+
+---
+
 ## [0.3.0] - 2026-11-11
 
 This release implements high-leverage ingestion, compression, and style serialization speedups identified through live containerized benchmarking against openpyxl 3.1.5.

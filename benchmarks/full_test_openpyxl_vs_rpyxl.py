@@ -1968,8 +1968,8 @@ def build_config(args):
 
 def run_backend_comparison(args, parser):
     import hashlib
-    from pathlib import Path
     import uuid
+    from pathlib import Path
 
     if args._backend_incompatible_options:
         parser.error(

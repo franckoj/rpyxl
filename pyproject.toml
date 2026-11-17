@@ -5,7 +5,7 @@ build-backend = "maturin"
 
 [project]
 name = "rpyxl"
-version = "0.3.0"
+version = "0.4.0"
 description = "A high-performance, Rust-powered alternative to openpyxl"
 authors = [{ name = "RPyXL Contributors" }]
 license = { text = "MIT OR Apache-2.0" }
@@ -77,5 +77,5 @@ target-version = "py39"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I"]
-ignore = ["E501"]
+ignore = ["E501", "E741"]
 

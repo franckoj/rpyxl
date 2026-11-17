@@ -100,3 +100,18 @@
   - Verification: 498 automated tests passing (432 unit + 66 compatibility), 0 mismatches in 4-way cross-library roundtrip verification.
   - Created Git release tag `v0.3.0` marking the high-performance release of RPyXL.
 
+## Phase 10: Streaming Native Iterators, PyCell Version Caching & Styled Save Acceleration
+- **Status**: Complete
+- **Date**: 2026-11-17
+- **Branch**: `chore/release-v0.4.0`
+- **Summary**:
+  - Implemented `PyWorksheetRowIterator` and `PyWorksheetColIterator` in `rpyxl-python/src/bindings.rs`, providing true streaming, lazy row/column traversal without building temporary matrix objects in memory or making redundant cross-FFI calls per row (1.49x faster cell row traversal, 817k cells/s).
+  - Added thread-safe `cached_value` with monotonic workbook version tracking to `PyCell`, skipping sheet RwLock acquisition and map lookups on unchanged cells (1.67x faster cell value reads, 592k cells/s).
+  - Implemented integer coordinate bounds validation in `ws.cell()` (1.43x faster cell writes, 325k cells/s) and `_may_have_merges` fast-path bypassing merged range searches for plain sheets.
+  - Resolved styled save bottleneck with consecutive style XML caching (`last_rich_ptr`, `last_eff_fmt`, `last_xf_idx`) and fast-path non-date General formatting.
+  - Introduced configurable deflate compression (`wb.compression_level`) defaulting to level 6, shrinking archive sizes by 31-34% while preserving fast saves.
+  - Integrated Ruff linting and formatting, git workflow rule quality gates, and exhaustive 7-section benchmark suite (`benchmarks/benchmark.py`).
+  - Verification: 498 automated tests passing (432 unit + 66 compatibility), 0 compiler/clippy warnings.
+  - Created Git release tag `v0.4.0`.
+
+
