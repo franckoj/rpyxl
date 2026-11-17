@@ -65,43 +65,52 @@ pub fn column_index_from_string(col_str: &str) -> RpyxlResult<u32> {
 /// Parse a cell coordinate string (e.g., "A1", "$B$12", "c3") into (row, col) (1-based).
 pub fn coordinate_to_tuple(coord: &str) -> RpyxlResult<(u32, u32)> {
     let clean = coord.trim();
-    if clean.is_empty() {
+    let bytes = clean.as_bytes();
+    if bytes.is_empty() {
         return Err(RpyxlError::InvalidCoordinate(coord.to_string()));
     }
 
-    let mut col_str = String::new();
-    let mut row_str = String::new();
+    let mut i = 0;
+    let len = bytes.len();
 
-    for c in clean.chars() {
-        if c == '$' {
-            continue;
-        } else if c.is_ascii_alphabetic() {
-            if !row_str.is_empty() {
-                // Cannot have letters after digits (e.g., "A1B")
-                return Err(RpyxlError::InvalidCoordinate(coord.to_string()));
-            }
-            col_str.push(c);
-        } else if c.is_ascii_digit() {
-            row_str.push(c);
-        } else {
-            return Err(RpyxlError::InvalidCoordinate(coord.to_string()));
+    if bytes[i] == b'$' {
+        i += 1;
+    }
+
+    let col_start = i;
+    let mut col: u64 = 0;
+    while i < len && bytes[i].is_ascii_alphabetic() {
+        let val = (bytes[i].to_ascii_uppercase() - b'A' + 1) as u64;
+        col = col * 26 + val;
+        if col > MAX_COLUMN as u64 {
+            return Err(RpyxlError::ColumnOutOfBounds(col as u32));
         }
+        i += 1;
     }
 
-    if col_str.is_empty() || row_str.is_empty() {
+    if i == col_start || col < MIN_COLUMN as u64 {
         return Err(RpyxlError::InvalidCoordinate(coord.to_string()));
     }
 
-    let col = column_index_from_string(&col_str)?;
-    let row: u32 = row_str
-        .parse()
-        .map_err(|_| RpyxlError::InvalidCoordinate(coord.to_string()))?;
-
-    if !(MIN_ROW..=MAX_ROW).contains(&row) {
-        return Err(RpyxlError::RowOutOfBounds(row));
+    if i < len && bytes[i] == b'$' {
+        i += 1;
     }
 
-    Ok((row, col))
+    let row_start = i;
+    let mut row: u64 = 0;
+    while i < len && bytes[i].is_ascii_digit() {
+        row = row * 10 + (bytes[i] - b'0') as u64;
+        if row > MAX_ROW as u64 {
+            return Err(RpyxlError::RowOutOfBounds(row as u32));
+        }
+        i += 1;
+    }
+
+    if i != len || i == row_start || row < MIN_ROW as u64 {
+        return Err(RpyxlError::InvalidCoordinate(coord.to_string()));
+    }
+
+    Ok((row as u32, col as u32))
 }
 
 /// Write (row, col) (1-based) directly into an existing buffer as coordinate (e.g., (1, 1) -> "A1").

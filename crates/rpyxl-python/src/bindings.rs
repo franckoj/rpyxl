@@ -744,10 +744,10 @@ impl PyWorksheet {
     #[getter]
     pub fn min_row(&self) -> PyResult<u32> {
         let wb = self.wb.read();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         Ok(ws.min_row())
     }
@@ -755,10 +755,10 @@ impl PyWorksheet {
     #[getter]
     pub fn max_row(&self) -> PyResult<u32> {
         let wb = self.wb.read();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         Ok(ws.max_row())
     }
@@ -766,10 +766,10 @@ impl PyWorksheet {
     #[getter]
     pub fn min_column(&self) -> PyResult<u32> {
         let wb = self.wb.read();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         Ok(ws.min_column())
     }
@@ -777,10 +777,10 @@ impl PyWorksheet {
     #[getter]
     pub fn max_column(&self) -> PyResult<u32> {
         let wb = self.wb.read();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         Ok(ws.max_column())
     }
@@ -788,10 +788,10 @@ impl PyWorksheet {
     #[getter]
     pub fn dimensions(&self) -> PyResult<String> {
         let wb = self.wb.read();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         ws.dimensions().map_err(map_rpyxl_err)
     }
@@ -1211,6 +1211,18 @@ impl PyWorksheet {
     pub fn append(&self, iterable: &Bound<'_, PyAny>) -> PyResult<u32> {
         let full_row = if let Ok(dict) = iterable.downcast::<PyDict>() {
             dict_to_cell_row(dict)?
+        } else if let Ok(tuple) = iterable.downcast::<PyTuple>() {
+            let mut values = Vec::with_capacity(tuple.len());
+            for item in tuple.iter() {
+                values.push(python_value_to_cell_value(&item)?);
+            }
+            values
+        } else if let Ok(list) = iterable.downcast::<PyList>() {
+            let mut values = Vec::with_capacity(list.len());
+            for item in list.iter() {
+                values.push(python_value_to_cell_value(&item)?);
+            }
+            values
         } else {
             let mut values = Vec::new();
             for item in iterable.iter()? {
@@ -1221,20 +1233,35 @@ impl PyWorksheet {
         };
 
         let mut wb = self.wb.write();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet_mut(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet_mut(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         ws.append(full_row).map_err(map_rpyxl_err)
     }
 
     pub fn append_rows(&self, rows: &Bound<'_, PyAny>) -> PyResult<u32> {
         let mut all_rows = Vec::new();
+        if let Ok(len) = rows.len() {
+            all_rows.reserve(len);
+        }
         for row in rows.iter()? {
             let row = row?;
             if let Ok(dict) = row.downcast::<PyDict>() {
                 all_rows.push(dict_to_cell_row(dict)?);
+            } else if let Ok(tuple) = row.downcast::<PyTuple>() {
+                let mut values = Vec::with_capacity(tuple.len());
+                for item in tuple.iter() {
+                    values.push(python_value_to_cell_value(&item)?);
+                }
+                all_rows.push(values);
+            } else if let Ok(list) = row.downcast::<PyList>() {
+                let mut values = Vec::with_capacity(list.len());
+                for item in list.iter() {
+                    values.push(python_value_to_cell_value(&item)?);
+                }
+                all_rows.push(values);
             } else {
                 let mut values = Vec::new();
                 for item in row.iter()? {
@@ -1246,10 +1273,10 @@ impl PyWorksheet {
         }
 
         let mut wb = self.wb.write();
-        let title = self.sheet_title.read().clone();
+        let title_guard = self.sheet_title.read();
         let ws = wb
-            .get_sheet_mut(&title)
-            .ok_or_else(|| RpyxlError::SheetNotFound(title.clone()))
+            .get_sheet_mut(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
             .map_err(map_rpyxl_err)?;
         ws.append_rows(all_rows).map_err(map_rpyxl_err)
     }
@@ -2785,6 +2812,20 @@ impl PyWriteOnlyWorksheet {
             if let Ok(dict) = row.downcast::<PyDict>() {
                 let full_row = dict_to_cell_row(dict)?;
                 sheet.append_row(&full_row).map_err(map_rpyxl_err)?;
+            } else if let Ok(tuple) = row.downcast::<PyTuple>() {
+                values.clear();
+                values.reserve(tuple.len());
+                for item in tuple.iter() {
+                    values.push(python_value_to_cell_value(&item)?);
+                }
+                sheet.append_row(&values).map_err(map_rpyxl_err)?;
+            } else if let Ok(list) = row.downcast::<PyList>() {
+                values.clear();
+                values.reserve(list.len());
+                for item in list.iter() {
+                    values.push(python_value_to_cell_value(&item)?);
+                }
+                sheet.append_row(&values).map_err(map_rpyxl_err)?;
             } else {
                 values.clear();
                 for item in row.iter()? {

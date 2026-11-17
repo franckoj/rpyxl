@@ -31,7 +31,28 @@ def column_index_from_string(col_str: str) -> int:
 
 def coordinate_to_tuple(coord: str) -> tuple[int, int]:
     """Convert a coordinate string (e.g. 'A1', '$B$10') to (row, col) (1-based)."""
-    match = re.fullmatch(r"\$?([A-Za-z]+)\$?([0-9]+)", coord.strip())
+    s = coord.strip()
+    if s and s.isascii():
+        i = 1 if s[0] == "$" else 0
+        col_start = i
+        while i < len(s) and ("A" <= s[i] <= "Z" or "a" <= s[i] <= "z"):
+            i += 1
+        col_end = i
+        if col_end > col_start and col_end - col_start <= 3:
+            if i < len(s) and s[i] == "$":
+                i += 1
+            row_start = i
+            while i < len(s) and "0" <= s[i] <= "9":
+                i += 1
+            if i == len(s) and i > row_start:
+                row = int(s[row_start:i])
+                if 1 <= row <= 1048576:
+                    col = 0
+                    for ch in s[col_start:col_end].upper():
+                        col = col * 26 + (ord(ch) - 64)
+                    if 1 <= col <= 16384:
+                        return (row, col)
+    match = re.fullmatch(r"\$?([A-Za-z]+)\$?([0-9]+)", s)
     if match is None:
         raise ValueError(f"Invalid coordinate format: {coord}")
     letters, digits = match.groups()

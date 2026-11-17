@@ -155,8 +155,26 @@ class Worksheet:
         return self._native.append(iterable)
 
     def append_rows(self, iterable_of_rows):
-        """Append multiple rows in a high-performance single FFI crossing."""
+        """Append multiple rows in a high-performance single FFI crossing.
+
+        Supports lists/tuples of rows, Pandas DataFrames, Polars DataFrames,
+        and 2D NumPy arrays.
+        """
         self._check_writable()
+        if hasattr(iterable_of_rows, "itertuples") and callable(
+            getattr(iterable_of_rows, "itertuples")
+        ):
+            iterable_of_rows = iterable_of_rows.itertuples(index=False, name=None)
+        elif hasattr(iterable_of_rows, "iter_rows") and callable(
+            getattr(iterable_of_rows, "iter_rows")
+        ):
+            iterable_of_rows = iterable_of_rows.iter_rows()
+        elif (
+            hasattr(iterable_of_rows, "tolist")
+            and callable(getattr(iterable_of_rows, "tolist"))
+            and getattr(iterable_of_rows, "ndim", 0) == 2
+        ):
+            iterable_of_rows = iterable_of_rows.tolist()
         return self._native.append_rows(iterable_of_rows)
 
     def extend(self, iterable_of_rows):

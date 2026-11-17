@@ -3008,49 +3008,125 @@ fn generate_worksheet_xml(
     write_coordinate(max_r, max_c, &mut s)?;
     s.push_str("\"/>\n  <sheetData>\n");
 
-    let mut itoa_buf = itoa::Buffer::new();
-    let mut current_row = 0;
-    let mut last_rich_ptr = usize::MAX;
-    let mut last_eff_fmt: Option<&str> = None;
-    let mut last_xf_idx: Option<usize> = None;
-    let mut last_style = 0usize;
+    let num_threads = rayon::current_num_threads();
+    let total_rows = if max_r >= min_r { max_r - min_r + 1 } else { 0 };
 
-    for (&(r, c), cell) in ws.cells() {
-        if r != current_row {
-            if current_row != 0 {
-                s.push_str("</row>\n");
+    if cell_count >= 8_000 && num_threads > 1 && total_rows >= 50 {
+        let num_chunks = (num_threads * 2)
+            .min((total_rows / 100).max(1) as usize)
+            .min(64);
+        let chunk_size = total_rows.div_ceil(num_chunks as u32);
+
+        let mut chunks = Vec::with_capacity(num_chunks);
+        for i in 0..num_chunks {
+            let r_start = min_r + i as u32 * chunk_size;
+            let r_end = (r_start + chunk_size - 1).min(max_r);
+            if r_start <= max_r {
+                chunks.push((r_start, r_end));
             }
-            current_row = r;
-            s.push_str("    <row r=\"");
-            s.push_str(itoa_buf.format(r));
-            s.push_str("\">");
         }
-        let rich_ptr = cell
-            .rich_style
-            .as_ref()
-            .map_or(0, |style| Arc::as_ptr(style) as usize);
-        let num_fmt = cell.number_format.as_deref();
-        let eff_fmt = effective_number_format(&cell.value, num_fmt);
-        let xf_idx = cell.source_xf_index();
-        let style = if styles.native.is_none() && rich_ptr == 0 && eff_fmt == "General" {
-            0
-        } else if rich_ptr == last_rich_ptr
-            && Some(eff_fmt) == last_eff_fmt
-            && xf_idx == last_xf_idx
-        {
-            last_style
-        } else {
-            let st = styles.cell_style(cell);
-            last_style = st;
-            last_rich_ptr = rich_ptr;
-            last_eff_fmt = Some(eff_fmt);
-            last_xf_idx = xf_idx;
-            st
-        };
-        write_workbook_cell(r, c, cell, &mut s, style, date_1904);
-    }
-    if current_row != 0 {
-        s.push_str("</row>\n");
+
+        let chunk_xmls: Vec<String> = chunks
+            .into_par_iter()
+            .map(|(r_start, r_end)| {
+                let mut chunk_s = String::with_capacity((chunk_size as usize * 10).min(50000) * 45);
+                let mut itoa_buf = itoa::Buffer::new();
+                let mut current_row = 0;
+                let mut last_rich_ptr = usize::MAX;
+                let mut last_eff_fmt: Option<&str> = None;
+                let mut last_xf_idx: Option<usize> = None;
+                let mut last_style = 0usize;
+
+                for (&(r, c), cell) in ws.cells().range((r_start, 1)..=(r_end, u32::MAX)) {
+                    if r != current_row {
+                        if current_row != 0 {
+                            chunk_s.push_str("</row>\n");
+                        }
+                        current_row = r;
+                        chunk_s.push_str("    <row r=\"");
+                        chunk_s.push_str(itoa_buf.format(r));
+                        chunk_s.push_str("\">");
+                    }
+                    let rich_ptr = cell
+                        .rich_style
+                        .as_ref()
+                        .map_or(0, |style| Arc::as_ptr(style) as usize);
+                    let num_fmt = cell.number_format.as_deref();
+                    let eff_fmt = effective_number_format(&cell.value, num_fmt);
+                    let xf_idx = cell.source_xf_index();
+                    let style = if styles.native.is_none() && rich_ptr == 0 && eff_fmt == "General"
+                    {
+                        0
+                    } else if rich_ptr == last_rich_ptr
+                        && Some(eff_fmt) == last_eff_fmt
+                        && xf_idx == last_xf_idx
+                    {
+                        last_style
+                    } else {
+                        let st = styles.cell_style(cell);
+                        last_style = st;
+                        last_rich_ptr = rich_ptr;
+                        last_eff_fmt = Some(eff_fmt);
+                        last_xf_idx = xf_idx;
+                        st
+                    };
+                    write_workbook_cell(r, c, cell, &mut chunk_s, style, date_1904);
+                }
+                if current_row != 0 {
+                    chunk_s.push_str("</row>\n");
+                }
+                chunk_s
+            })
+            .collect();
+
+        for chunk_xml in chunk_xmls {
+            s.push_str(&chunk_xml);
+        }
+    } else {
+        let mut itoa_buf = itoa::Buffer::new();
+        let mut current_row = 0;
+        let mut last_rich_ptr = usize::MAX;
+        let mut last_eff_fmt: Option<&str> = None;
+        let mut last_xf_idx: Option<usize> = None;
+        let mut last_style = 0usize;
+
+        for (&(r, c), cell) in ws.cells() {
+            if r != current_row {
+                if current_row != 0 {
+                    s.push_str("</row>\n");
+                }
+                current_row = r;
+                s.push_str("    <row r=\"");
+                s.push_str(itoa_buf.format(r));
+                s.push_str("\">");
+            }
+            let rich_ptr = cell
+                .rich_style
+                .as_ref()
+                .map_or(0, |style| Arc::as_ptr(style) as usize);
+            let num_fmt = cell.number_format.as_deref();
+            let eff_fmt = effective_number_format(&cell.value, num_fmt);
+            let xf_idx = cell.source_xf_index();
+            let style = if styles.native.is_none() && rich_ptr == 0 && eff_fmt == "General" {
+                0
+            } else if rich_ptr == last_rich_ptr
+                && Some(eff_fmt) == last_eff_fmt
+                && xf_idx == last_xf_idx
+            {
+                last_style
+            } else {
+                let st = styles.cell_style(cell);
+                last_style = st;
+                last_rich_ptr = rich_ptr;
+                last_eff_fmt = Some(eff_fmt);
+                last_xf_idx = xf_idx;
+                st
+            };
+            write_workbook_cell(r, c, cell, &mut s, style, date_1904);
+        }
+        if current_row != 0 {
+            s.push_str("</row>\n");
+        }
     }
 
     s.push_str("  </sheetData>\n</worksheet>");
