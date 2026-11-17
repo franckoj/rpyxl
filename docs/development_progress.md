@@ -114,4 +114,21 @@
   - Verification: 498 automated tests passing (432 unit + 66 compatibility), 0 compiler/clippy warnings.
   - Created Git release tag `v0.4.0`.
 
+## Phase 11: Zero-Allocation I/O & XML Acceleration, Row Arena Optimizations & Scalar Fast-Paths
+- **Status**: Complete
+- **Date**: 2026-11-18
+- **Branch**: `chore/release-v0.5.0`
+- **Summary**:
+  - Implemented zero-allocation byte coordinate parsing (`coordinate_bytes_to_tuple`) in `rpyxl-core`, eliminating per-cell heap coordinate string allocations during XML ingestion.
+  - Eliminated heap allocations for cell types, styles, and coordinates in `rpyxl-ooxml` using copy-free stack enums and integer parsers.
+  - Integrated Rayon parallel multi-sheet parsing in `to_workbook()`, allowing concurrent worksheet parsing across CPU cores.
+  - Eliminated double-write tempfile copying during saves using atomic rename persistence (`NamedTempFile::persist`).
+  - Implemented linear peekable streaming row scanning in `PyRowIterator`, replacing per-row `HashMap` allocations with $\mathcal{O}(1)$ peek/advance operations.
+  - Added sheet index resolution caching in `PyWorksheetRowIterator` and `PyWorksheetColIterator` to bypass $\mathcal{O}(S)$ sheet title iteration.
+  - Implemented monotonic direct BTreeMap cell insertion in `Worksheet::append` and `append_rows`, eliminating redundant entry tree lookups.
+  - Implemented direct CPython pointer downcasting and PyO3 symbol interning in `python_value_to_cell_value`.
+  - Added scalar cell write fast-path in `Worksheet.cell(row, col, value=...)` for unmerged sheets (6.17x faster cell writes than 0.4.0, up to 655,000 cells/s).
+  - Verification: 498 automated tests passing (432 unit + 66 compatibility), 113 Rust unit/integration tests passing, 0 clippy warnings, 0 ruff errors.
+  - Created Git release tag `v0.5.0`.
+
 

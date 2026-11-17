@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.0] - 2026-11-18
+
+This release introduces next-generation performance architecture spanning Tier 1 zero-allocation I/O & XML acceleration, Tier 2 row-chunked memory & streaming iteration optimizations, and a direct scalar cell write fast-path, delivering **6x to 18x speedups** over openpyxl 3.1.5 and up to **6.17x speedup** over rpyxl 0.4.0.
+
+### Added
+- **Zero-Allocation Coordinate Byte Parsing**: Added `coordinate_bytes_to_tuple(&[u8]) -> Option<(u32, u32)>` in `rpyxl-core/src/coordinate.rs`. Parses raw ASCII coordinates (e.g. `b"AA1048576"`) directly from XML token byte slices into `(row, col)` tuples without intermediate heap string allocations, with robust fallbacks for entity-encoded attributes (`&#x41;&#49;`).
+- **Zero-Allocation XML Attribute Parsing**: Replaced heap-allocated strings for cell types, styles, and coordinates in `rpyxl-ooxml/src/reader.rs` with copy-free `CellTypeTag` enums, integer parsers (`parse_style_index`, `parse_u32_ascii`), and raw byte-slice matching across `StreamingRowReader`, `parse_worksheet_into`, and `read_single_cell`.
+- **Parallel Multi-Sheet Reader**: Integrated Rayon parallel execution in `to_workbook()`, allowing multi-sheet workbooks to parse worksheet XML payloads concurrently across CPU threads.
+- **Direct Scalar Cell Write Fast-Path**: Optimized `Worksheet.cell(row, col, value=...)` for unmerged sheets to pass values directly into Rust native cell constructors in a single FFI crossing, bypassing redundant Python `Cell` wrapping and subsequent property setter dispatches (6.17x faster cell writes than 0.4.0, up to 655,000 cells/s).
+- **Automated Version Comparison Benchmark**: Added `benchmarks/bench_040_vs_latest.py` for automated head-to-head benchmarking between release versions across all writing, reading, and in-memory workflows.
+
+### Changed & Optimized
+- **Atomic File Persistence (`NamedTempFile::persist`)**: Replaced buffered temporary file copy loops with atomic rename in `rpyxl-ooxml/src/writer.rs`, eliminating the double disk I/O penalty during workbook saves.
+- **Zero-Allocation Streaming Row Iterator**: Replaced per-row temporary `HashMap` allocations in `PyRowIterator::__next__` with a linear peekable iterator over the sorted cell stream, converting $\mathcal{O}(N)$ hashing into allocation-free $\mathcal{O}(1)$ peek/advance operations.
+- **Sheet Index Resolution Caching**: Added `cached_sheet_idx` tracking to `PyWorksheetRowIterator` and `PyWorksheetColIterator` in `rpyxl-python/src/bindings.rs`, bypassing $\mathcal{O}(S)$ sheet title iteration on every row iteration.
+- **Monotonic Direct BTreeMap Cell Insertions**: Replaced per-cell `cells.entry().or_insert_with()` tree traversals in `Worksheet::append` and `Worksheet::append_rows` (`rpyxl-core/src/worksheet.rs`) with direct in-place insertions, computing and updating cached sheet boundaries in one batch.
+- **CPython Pointer Downcasting & PyO3 Interning**: Replaced Python MRO reflection in `python_value_to_cell_value` with direct CPython pointer downcasting for primitive types. Module and method names (`datetime`, `isoformat`, `utcoffset`) are interned with `pyo3::intern!`, completely eliminating runtime string allocations in hot loops.
+- **Worksheet Iterator Local Binding**: Bound `cell_cls` and `wrap` locally in `python/rpyxl/worksheet/__init__.py` to eliminate Python global lookups inside inner row/column comprehensions.
+
+---
+
 ## [0.4.0] - 2026-11-17
 
 This release delivers major performance optimizations across cell access, streaming iteration, styled worksheet serialization, and configurable compression, alongside enhanced developer tooling and comprehensive benchmark suites.

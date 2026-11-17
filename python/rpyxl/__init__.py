@@ -10,7 +10,7 @@ from .workbook import (
 )
 from .worksheet import NativeWorksheet, Worksheet
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "Cell",

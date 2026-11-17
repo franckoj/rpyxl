@@ -1,14 +1,11 @@
 import json
-import os
 import subprocess
 import sys
-import tempfile
-import time
 
 PYTHON_040 = "/private/tmp/venv_040/bin/python3"
 PYTHON_LATEST = sys.executable
 
-BENCHMARK_CODE = '''
+BENCHMARK_CODE = """
 import gc
 import json
 import os
@@ -161,7 +158,8 @@ for p in [save_path, wo_path_10k, wo_path_50k, rt_path]:
         pass
 
 print(json.dumps(results))
-'''
+"""
+
 
 def run_suite(python_bin, label):
     print(f"Running benchmarks for {label} ({python_bin})...")
@@ -170,6 +168,7 @@ def run_suite(python_bin, label):
         print(f"Error in {label}:", res.stderr)
         sys.exit(1)
     return json.loads(res.stdout.strip().splitlines()[-1])
+
 
 def main():
     res_040 = run_suite(PYTHON_040, "rpyxl 0.4.0")
@@ -189,10 +188,12 @@ def main():
         "roundtrip_5k": ("Roundtrip Write + Read", "5,000 rows x 10 cols"),
     }
 
-    print("\n" + "="*80)
+    print("\n" + "=" * 80)
     print("RPyXL 0.4.0 vs Latest Changes Benchmark Comparison")
-    print("="*80)
-    print(f"{'Benchmark Operation':<32} | {'Dataset':<26} | {'v0.4.0':<10} | {'Latest':<10} | {'Speedup':<10}")
+    print("=" * 80)
+    print(
+        f"{'Benchmark Operation':<32} | {'Dataset':<26} | {'v0.4.0':<10} | {'Latest':<10} | {'Speedup':<10}"
+    )
     print("-" * 98)
 
     for key, (op_name, dataset) in labels.items():
@@ -208,9 +209,12 @@ def main():
             tlatest_str = f"{tlatest:.4f} s"
 
         speedup_str = f"{speedup:.2f}x"
-        print(f"{op_name:<32} | {dataset:<26} | {t040_str:<10} | {tlatest_str:<10} | {speedup_str:<10}")
+        print(
+            f"{op_name:<32} | {dataset:<26} | {t040_str:<10} | {tlatest_str:<10} | {speedup_str:<10}"
+        )
 
-    print("="*98)
+    print("=" * 98)
+
 
 if __name__ == "__main__":
     main()
