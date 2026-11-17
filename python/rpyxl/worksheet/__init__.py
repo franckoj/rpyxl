@@ -131,13 +131,26 @@ class Worksheet:
             raise ValueError("Column outside Excel limits")
         if self._write_only:
             raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'cell'")
-        if value is not None and self._read_only:
-            self._check_writable()
-        native = self._native.cell(row=row, column=column)
-        cell = self._wrap_cell(native, row=row, column=column)
+        if self._read_only:
+            if value is not None:
+                self._check_writable()
+            native = self._native.cell(row=row, column=column)
+            return self._wrap_cell(native, row=row, column=column)
+
         if value is not None:
-            cell.value = value
-        return cell
+            if self._may_have_merges:
+                cell = self._wrap_cell(
+                    self._native.cell(row=row, column=column), row=row, column=column
+                )
+                cell.value = value
+                return cell
+            native = self._native.cell(row=row, column=column, value=value)
+            return Cell(self, native)
+
+        native = self._native.cell(row=row, column=column)
+        if not self._may_have_merges:
+            return Cell(self, native)
+        return self._wrap_cell(native, row=row, column=column)
 
     def __getitem__(self, key):
         return self._wrap_result(self._native[key])
