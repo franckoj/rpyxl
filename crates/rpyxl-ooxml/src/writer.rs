@@ -32,18 +32,27 @@ pub fn save_workbook_generated<P: AsRef<Path>>(path: P, wb: &Workbook) -> RpyxlR
 }
 
 fn save_staged(path: &Path, wb: &Workbook, generated: bool) -> RpyxlResult<()> {
-    // Never truncate a destination (which may also be the source) until the entire
-    // archive has serialized successfully and all source ZIP handles are closed.
-    let mut staged = tempfile::tempfile().map_err(write_error)?;
+    // Write into a temporary file in the destination's directory first so that
+    // an atomic persist/rename can be performed without intermediate buffer copies.
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    let mut staged = tempfile::NamedTempFile::new_in(parent)
+        .or_else(|_| tempfile::NamedTempFile::new())
+        .map_err(write_error)?;
     if generated {
         write_workbook_generated(&mut staged, wb)?;
     } else {
         write_workbook(&mut staged, wb)?;
     }
-    staged.seek(SeekFrom::Start(0)).map_err(write_error)?;
-    let mut destination = BufWriter::new(File::create(path).map_err(write_error)?);
-    std::io::copy(&mut staged, &mut destination).map_err(write_error)?;
-    destination.flush().map_err(write_error)
+    staged.flush().map_err(write_error)?;
+
+    if let Err(persist_err) = staged.persist(path) {
+        let mut file = persist_err.file;
+        file.seek(SeekFrom::Start(0)).map_err(write_error)?;
+        let mut destination = BufWriter::new(File::create(path).map_err(write_error)?);
+        std::io::copy(&mut file, &mut destination).map_err(write_error)?;
+        destination.flush().map_err(write_error)?;
+    }
+    Ok(())
 }
 
 fn write_error(error: impl std::fmt::Display) -> RpyxlError {

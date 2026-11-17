@@ -13,7 +13,7 @@ use quick_xml::{NsReader, Writer};
 use zip::ZipArchive;
 
 use rpyxl_core::cell::{Cell, CellValue};
-use rpyxl_core::coordinate::{coordinate_to_tuple, range_boundaries};
+use rpyxl_core::coordinate::{coordinate_bytes_to_tuple, range_boundaries};
 use rpyxl_core::error::{RpyxlError, RpyxlResult};
 use rpyxl_core::package::WorksheetTemplate;
 use rpyxl_core::workbook::Workbook;
@@ -21,6 +21,59 @@ use rpyxl_core::worksheet::Worksheet;
 
 use crate::shared_strings::{decode_xml_text, SharedStringsTable};
 use crate::styles::{utf8_declaration, Styles};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CellTypeTag {
+    #[default]
+    NumberOrEmpty,
+    SharedString,
+    Bool,
+    Error,
+    Str,
+    InlineStr,
+    Date,
+}
+
+impl CellTypeTag {
+    #[inline]
+    pub fn from_bytes(bytes: &[u8]) -> Self {
+        match bytes {
+            b"s" => Self::SharedString,
+            b"b" => Self::Bool,
+            b"str" => Self::Str,
+            b"inlineStr" => Self::InlineStr,
+            b"e" => Self::Error,
+            b"d" => Self::Date,
+            _ => Self::NumberOrEmpty,
+        }
+    }
+}
+
+#[inline]
+fn parse_style_index(bytes: &[u8]) -> usize {
+    let mut val: usize = 0;
+    for &b in bytes {
+        if b.is_ascii_digit() {
+            val = val.saturating_mul(10).saturating_add((b - b'0') as usize);
+        } else {
+            break;
+        }
+    }
+    val
+}
+
+#[inline]
+fn parse_u32_ascii(bytes: &[u8]) -> u32 {
+    let mut val: u32 = 0;
+    for &b in bytes {
+        if b.is_ascii_digit() {
+            val = val.saturating_mul(10).saturating_add((b - b'0') as u32);
+        } else {
+            break;
+        }
+    }
+    val
+}
 
 #[derive(Debug, Clone)]
 pub struct SheetInfo {
@@ -203,23 +256,64 @@ impl<R: Read + Seek> XlsxPackage<R> {
         wb.set_source_styles(self.styles.rich_styles().to_vec());
         wb.source_styles_xml = self.styles.source_xml().map(str::to_owned);
 
-        for sheet_info in &self.sheets {
-            let mut ws = Worksheet::new(&sheet_info.name)?;
-
-            if let Ok(file) = self.archive.by_name(&sheet_info.target_path) {
-                parse_worksheet_into(
-                    file,
-                    &mut ws,
-                    &self.shared_strings,
-                    &self.styles,
-                    self.data_only,
-                )?;
+        if self.sheets.len() > 1 {
+            let mut sheet_payloads = Vec::with_capacity(self.sheets.len());
+            for sheet_info in &self.sheets {
+                let bytes = if let Ok(mut file) = self.archive.by_name(&sheet_info.target_path) {
+                    let mut b = Vec::with_capacity(file.size() as usize);
+                    file.read_to_end(&mut b)
+                        .map_err(|e| RpyxlError::IoError(format!("Read error: {}", e)))?;
+                    Some(b)
+                } else {
+                    None
+                };
+                sheet_payloads.push((sheet_info.name.clone(), bytes));
             }
 
-            // Create sheet in workbook
-            wb.create_sheet(Some(&sheet_info.name), None)?;
-            if let Some(target_ws) = wb.get_sheet_mut(&sheet_info.name) {
-                *target_ws = ws;
+            use rayon::prelude::*;
+            let parsed_sheets: Vec<RpyxlResult<(String, Worksheet)>> = sheet_payloads
+                .into_par_iter()
+                .map(|(name, bytes_opt)| {
+                    let mut ws = Worksheet::new(&name)?;
+                    if let Some(bytes) = bytes_opt {
+                        parse_worksheet_into(
+                            &bytes[..],
+                            &mut ws,
+                            &self.shared_strings,
+                            &self.styles,
+                            self.data_only,
+                        )?;
+                    }
+                    Ok((name, ws))
+                })
+                .collect();
+
+            for res in parsed_sheets {
+                let (name, ws) = res?;
+                wb.create_sheet(Some(&name), None)?;
+                if let Some(target_ws) = wb.get_sheet_mut(&name) {
+                    *target_ws = ws;
+                }
+            }
+        } else {
+            for sheet_info in &self.sheets {
+                let mut ws = Worksheet::new(&sheet_info.name)?;
+
+                if let Ok(file) = self.archive.by_name(&sheet_info.target_path) {
+                    parse_worksheet_into(
+                        file,
+                        &mut ws,
+                        &self.shared_strings,
+                        &self.styles,
+                        self.data_only,
+                    )?;
+                }
+
+                // Create sheet in workbook
+                wb.create_sheet(Some(&sheet_info.name), None)?;
+                if let Some(target_ws) = wb.get_sheet_mut(&sheet_info.name) {
+                    *target_ws = ws;
+                }
             }
         }
 
@@ -772,8 +866,8 @@ pub fn parse_worksheet_into<R: Read>(
     let mut buf = Vec::new();
     let mut ancestors = Vec::new();
     let mut legacy_namespace = false;
-    let mut current_coord = String::new();
-    let mut current_type = String::new();
+    let mut current_cell_coord: Option<(u32, u32)> = None;
+    let mut current_type = CellTypeTag::NumberOrEmpty;
     let mut current_style = 0usize;
     let mut current_style_explicit = false;
     let mut formula_text = String::new();
@@ -823,8 +917,8 @@ pub fn parse_worksheet_into<R: Read>(
                 }
                 match element {
                     WorksheetElement::Cell => {
-                        current_coord.clear();
-                        current_type.clear();
+                        current_cell_coord = None;
+                        current_type = CellTypeTag::NumberOrEmpty;
                         current_style = 0;
                         current_style_explicit = false;
                         formula_text.clear();
@@ -832,28 +926,39 @@ pub fn parse_worksheet_into<R: Read>(
                         for attr in e.attributes().flatten() {
                             match attr.key.as_ref() {
                                 b"r" => {
-                                    if let Ok(v) = attr.decode_and_unescape_value(decoder) {
-                                        current_coord = v.into_owned();
+                                    current_cell_coord =
+                                        coordinate_bytes_to_tuple(attr.value.as_ref());
+                                    if current_cell_coord.is_none() {
+                                        if let Ok(v) = attr.decode_and_unescape_value(decoder) {
+                                            current_cell_coord =
+                                                coordinate_bytes_to_tuple(v.as_bytes());
+                                        }
                                     }
                                 }
                                 b"t" => {
-                                    if let Ok(v) = attr.decode_and_unescape_value(decoder) {
-                                        current_type = v.into_owned();
+                                    current_type = CellTypeTag::from_bytes(attr.value.as_ref());
+                                    if current_type == CellTypeTag::NumberOrEmpty
+                                        && attr.value.contains(&b'&')
+                                    {
+                                        if let Ok(v) = attr.decode_and_unescape_value(decoder) {
+                                            current_type = CellTypeTag::from_bytes(v.as_bytes());
+                                        }
                                     }
                                 }
                                 b"s" => {
                                     current_style_explicit = true;
-                                    current_style = attr
-                                        .decode_and_unescape_value(decoder)
-                                        .ok()
-                                        .and_then(|v| v.parse().ok())
-                                        .unwrap_or(0);
+                                    current_style = parse_style_index(attr.value.as_ref());
+                                    if current_style == 0 && attr.value.contains(&b'&') {
+                                        if let Ok(v) = attr.decode_and_unescape_value(decoder) {
+                                            current_style = parse_style_index(v.as_bytes());
+                                        }
+                                    }
                                 }
                                 _ => {}
                             }
                         }
                         if empty {
-                            if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
+                            if let Some((row, col)) = current_cell_coord {
                                 let cell = ws.set_cell_value(row, col, CellValue::Empty)?;
                                 attach_cell_style(
                                     cell,
@@ -862,7 +967,6 @@ pub fn parse_worksheet_into<R: Read>(
                                     current_style_explicit,
                                 );
                             }
-                            current_coord.clear();
                         }
                     }
                     WorksheetElement::MergeCell => {
@@ -896,9 +1000,9 @@ pub fn parse_worksheet_into<R: Read>(
             },
             Event::End(_) => {
                 if ancestors.pop() == Some(WorksheetElement::Cell) {
-                    if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
+                    if let Some((row, col)) = current_cell_coord.take() {
                         let cell_value = resolve_cell_value(
-                            &current_type,
+                            current_type,
                             current_style,
                             &val_text,
                             &formula_text,
@@ -909,7 +1013,6 @@ pub fn parse_worksheet_into<R: Read>(
                         let cell = ws.set_cell_value(row, col, cell_value)?;
                         attach_cell_style(cell, styles, current_style, current_style_explicit);
                     }
-                    current_coord.clear();
                 }
             }
             Event::Comment(_) | Event::PI(_) | Event::CData(_)
@@ -948,8 +1051,8 @@ pub fn parse_worksheet_streaming<R: Read>(
     let mut current_row_cells = Vec::new();
 
     let mut current_row_idx = 0u32;
-    let mut current_coord = String::new();
-    let mut current_type = String::new();
+    let mut current_cell_coord: Option<(u32, u32)> = None;
+    let mut current_type = CellTypeTag::NumberOrEmpty;
     let mut current_style = 0usize;
 
     let mut in_v = false;
@@ -971,15 +1074,19 @@ pub fn parse_worksheet_streaming<R: Read>(
                     current_row_cells.clear();
                     for attr in e.attributes().flatten() {
                         if attr.key.local_name().as_ref() == b"r" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_row_idx = v.parse().unwrap_or(0);
+                            current_row_idx = parse_u32_ascii(&attr.value);
+                            if current_row_idx == 0 && attr.value.contains(&b'&') {
+                                if let Ok(v) = attr.decode_and_unescape_value(xml_reader.decoder())
+                                {
+                                    current_row_idx = parse_u32_ascii(v.as_bytes());
+                                }
                             }
                         }
                     }
                 }
                 b"c" => {
-                    current_coord.clear();
-                    current_type.clear();
+                    current_cell_coord = None;
+                    current_type = CellTypeTag::NumberOrEmpty;
                     current_style = 0;
                     formula_text.clear();
                     val_text.clear();
@@ -987,16 +1094,30 @@ pub fn parse_worksheet_streaming<R: Read>(
                     for attr in e.attributes().flatten() {
                         let k = attr.key.local_name();
                         if k.as_ref() == b"r" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_coord = v.to_string();
+                            current_cell_coord = coordinate_bytes_to_tuple(&attr.value);
+                            if current_cell_coord.is_none() {
+                                if let Ok(v) = attr.decode_and_unescape_value(xml_reader.decoder())
+                                {
+                                    current_cell_coord = coordinate_bytes_to_tuple(v.as_bytes());
+                                }
                             }
                         } else if k.as_ref() == b"t" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_type = v.to_string();
+                            current_type = CellTypeTag::from_bytes(&attr.value);
+                            if current_type == CellTypeTag::NumberOrEmpty
+                                && attr.value.contains(&b'&')
+                            {
+                                if let Ok(v) = attr.decode_and_unescape_value(xml_reader.decoder())
+                                {
+                                    current_type = CellTypeTag::from_bytes(v.as_bytes());
+                                }
                             }
                         } else if k.as_ref() == b"s" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_style = v.parse().unwrap_or(0);
+                            current_style = parse_style_index(&attr.value);
+                            if current_style == 0 && attr.value.contains(&b'&') {
+                                if let Ok(v) = attr.decode_and_unescape_value(xml_reader.decoder())
+                                {
+                                    current_style = parse_style_index(v.as_bytes());
+                                }
                             }
                         }
                     }
@@ -1023,20 +1144,18 @@ pub fn parse_worksheet_streaming<R: Read>(
                 b"f" => in_f = false,
                 b"t" => in_is_t = false,
                 b"c" => {
-                    if !current_coord.is_empty() {
-                        if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
-                            if row >= r_min && row <= r_max && col >= c_min && col <= c_max {
-                                let cell_value = resolve_cell_value(
-                                    &current_type,
-                                    current_style,
-                                    &val_text,
-                                    &formula_text,
-                                    shared_strings,
-                                    styles,
-                                    data_only,
-                                );
-                                current_row_cells.push((row, col, cell_value));
-                            }
+                    if let Some((row, col)) = current_cell_coord.take() {
+                        if row >= r_min && row <= r_max && col >= c_min && col <= c_max {
+                            let cell_value = resolve_cell_value(
+                                current_type,
+                                current_style,
+                                &val_text,
+                                &formula_text,
+                                shared_strings,
+                                styles,
+                                data_only,
+                            );
+                            current_row_cells.push((row, col, cell_value));
                         }
                     }
                 }
@@ -1083,7 +1202,7 @@ fn parse_iso_temporal(value: &str) -> CellValue {
 }
 
 fn resolve_cell_value(
-    t_attr: &str,
+    t_tag: CellTypeTag,
     style_idx: usize,
     val_text: &str,
     formula_text: &str,
@@ -1091,43 +1210,49 @@ fn resolve_cell_value(
     styles: &Styles,
     data_only: bool,
 ) -> CellValue {
-    let val_text = if matches!(t_attr, "inlineStr" | "str" | "e") {
+    let val_text = if matches!(
+        t_tag,
+        CellTypeTag::InlineStr | CellTypeTag::Str | CellTypeTag::Error
+    ) {
         val_text
     } else {
         val_text.trim()
     };
-    let raw_val = if t_attr == "s" {
-        // Shared string index
-        if let Ok(idx) = val_text.parse::<usize>() {
-            shared_strings
-                .get(idx)
-                .map(|s| CellValue::String(s.to_string()))
-                .unwrap_or(CellValue::Empty)
-        } else {
-            CellValue::Empty
+    let raw_val = match t_tag {
+        CellTypeTag::SharedString => {
+            // Shared string index
+            if let Ok(idx) = val_text.parse::<usize>() {
+                shared_strings
+                    .get(idx)
+                    .map(|s| CellValue::String(s.to_string()))
+                    .unwrap_or(CellValue::Empty)
+            } else {
+                CellValue::Empty
+            }
         }
-    } else if t_attr == "b" {
-        CellValue::Bool(val_text == "1" || val_text.eq_ignore_ascii_case("true"))
-    } else if t_attr == "inlineStr" || t_attr == "str" || t_attr == "e" {
-        CellValue::String(val_text.to_string())
-    } else if t_attr == "d" {
-        parse_iso_temporal(val_text)
-    } else if val_text.is_empty() {
-        CellValue::Empty
-    } else {
-        // Number or Date
-        if styles.is_date_format(style_idx) && !styles.is_duration_format(style_idx) {
-            if let Ok(serial) = val_text.parse::<f64>() {
-                if let Some(date_str) = styles.date_string_for_style(serial, style_idx) {
-                    CellValue::DateTime(date_str)
+        CellTypeTag::Bool => {
+            CellValue::Bool(val_text == "1" || val_text.eq_ignore_ascii_case("true"))
+        }
+        CellTypeTag::InlineStr | CellTypeTag::Str | CellTypeTag::Error => {
+            CellValue::String(val_text.to_string())
+        }
+        CellTypeTag::Date => parse_iso_temporal(val_text),
+        CellTypeTag::NumberOrEmpty => {
+            if val_text.is_empty() {
+                CellValue::Empty
+            } else if styles.is_date_format(style_idx) && !styles.is_duration_format(style_idx) {
+                if let Ok(serial) = val_text.parse::<f64>() {
+                    if let Some(date_str) = styles.date_string_for_style(serial, style_idx) {
+                        CellValue::DateTime(date_str)
+                    } else {
+                        parse_numeric_or_string(val_text)
+                    }
                 } else {
                     parse_numeric_or_string(val_text)
                 }
             } else {
                 parse_numeric_or_string(val_text)
             }
-        } else {
-            parse_numeric_or_string(val_text)
         }
     };
 
@@ -1204,8 +1329,8 @@ impl<R: Read> StreamingRowReader<R> {
 
         let mut current_row_idx = 0u32;
         let mut row_cells = Vec::new();
-        let mut current_coord = String::new();
-        let mut current_type = String::new();
+        let mut current_cell_coord: Option<(u32, u32)> = None;
+        let mut current_type = CellTypeTag::NumberOrEmpty;
         let mut current_style = 0usize;
 
         let mut in_v = false;
@@ -1225,15 +1350,20 @@ impl<R: Read> StreamingRowReader<R> {
                         row_cells.clear();
                         for attr in e.attributes().flatten() {
                             if attr.key.local_name().as_ref() == b"r" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_row_idx = v.parse().unwrap_or(0);
+                                current_row_idx = parse_u32_ascii(&attr.value);
+                                if current_row_idx == 0 && attr.value.contains(&b'&') {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(self.xml_reader.decoder())
+                                    {
+                                        current_row_idx = parse_u32_ascii(v.as_bytes());
+                                    }
                                 }
                             }
                         }
                     }
                     b"c" if inside_row => {
-                        current_coord.clear();
-                        current_type.clear();
+                        current_cell_coord = None;
+                        current_type = CellTypeTag::NumberOrEmpty;
                         current_style = 0;
                         formula_text.clear();
                         val_text.clear();
@@ -1241,16 +1371,34 @@ impl<R: Read> StreamingRowReader<R> {
                         for attr in e.attributes().flatten() {
                             let k = attr.key.local_name();
                             if k.as_ref() == b"r" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_coord = v.to_string();
+                                current_cell_coord = coordinate_bytes_to_tuple(&attr.value);
+                                if current_cell_coord.is_none() {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(self.xml_reader.decoder())
+                                    {
+                                        current_cell_coord =
+                                            coordinate_bytes_to_tuple(v.as_bytes());
+                                    }
                                 }
                             } else if k.as_ref() == b"t" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_type = v.to_string();
+                                current_type = CellTypeTag::from_bytes(&attr.value);
+                                if current_type == CellTypeTag::NumberOrEmpty
+                                    && attr.value.contains(&b'&')
+                                {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(self.xml_reader.decoder())
+                                    {
+                                        current_type = CellTypeTag::from_bytes(v.as_bytes());
+                                    }
                                 }
                             } else if k.as_ref() == b"s" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_style = v.parse().unwrap_or(0);
+                                current_style = parse_style_index(&attr.value);
+                                if current_style == 0 && attr.value.contains(&b'&') {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(self.xml_reader.decoder())
+                                    {
+                                        current_style = parse_style_index(v.as_bytes());
+                                    }
                                 }
                             }
                         }
@@ -1277,23 +1425,21 @@ impl<R: Read> StreamingRowReader<R> {
                     b"f" => in_f = false,
                     b"t" => in_is_t = false,
                     b"c" if inside_row => {
-                        if !current_coord.is_empty() {
-                            if let Ok((row, col)) = coordinate_to_tuple(&current_coord) {
-                                if current_row_idx == 0 {
-                                    current_row_idx = row;
-                                }
-                                if col >= self.min_col && col <= self.max_col {
-                                    let cell_value = resolve_cell_value(
-                                        &current_type,
-                                        current_style,
-                                        &val_text,
-                                        &formula_text,
-                                        &self.shared_strings,
-                                        &self.styles,
-                                        self.data_only,
-                                    );
-                                    row_cells.push((col, cell_value));
-                                }
+                        if let Some((row, col)) = current_cell_coord.take() {
+                            if current_row_idx == 0 {
+                                current_row_idx = row;
+                            }
+                            if col >= self.min_col && col <= self.max_col {
+                                let cell_value = resolve_cell_value(
+                                    current_type,
+                                    current_style,
+                                    &val_text,
+                                    &formula_text,
+                                    &self.shared_strings,
+                                    &self.styles,
+                                    self.data_only,
+                                );
+                                row_cells.push((col, cell_value));
                             }
                         }
                     }
@@ -1343,8 +1489,8 @@ pub fn read_single_cell<R: Read>(
 
     let mut buf = Vec::new();
     let mut current_row = 0u32;
-    let mut current_coord = String::new();
-    let mut current_type = String::new();
+    let mut current_cell_coord: Option<(u32, u32)> = None;
+    let mut current_type = CellTypeTag::NumberOrEmpty;
     let mut current_style = 0usize;
     let mut in_v = false;
     let mut in_f = false;
@@ -1358,8 +1504,12 @@ pub fn read_single_cell<R: Read>(
                 b"row" => {
                     for attr in e.attributes().flatten() {
                         if attr.key.local_name().as_ref() == b"r" {
-                            if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                current_row = v.parse().unwrap_or(0);
+                            current_row = parse_u32_ascii(&attr.value);
+                            if current_row == 0 && attr.value.contains(&b'&') {
+                                if let Ok(v) = attr.decode_and_unescape_value(xml_reader.decoder())
+                                {
+                                    current_row = parse_u32_ascii(v.as_bytes());
+                                }
                             }
                         }
                     }
@@ -1369,8 +1519,8 @@ pub fn read_single_cell<R: Read>(
                 }
                 b"c" => {
                     if current_row == target_row || current_row == 0 {
-                        current_coord.clear();
-                        current_type.clear();
+                        current_cell_coord = None;
+                        current_type = CellTypeTag::NumberOrEmpty;
                         current_style = 0;
                         formula_text.clear();
                         val_text.clear();
@@ -1378,16 +1528,34 @@ pub fn read_single_cell<R: Read>(
                         for attr in e.attributes().flatten() {
                             let k = attr.key.local_name();
                             if k.as_ref() == b"r" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_coord = v.to_string();
+                                current_cell_coord = coordinate_bytes_to_tuple(&attr.value);
+                                if current_cell_coord.is_none() {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(xml_reader.decoder())
+                                    {
+                                        current_cell_coord =
+                                            coordinate_bytes_to_tuple(v.as_bytes());
+                                    }
                                 }
                             } else if k.as_ref() == b"t" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_type = v.to_string();
+                                current_type = CellTypeTag::from_bytes(&attr.value);
+                                if current_type == CellTypeTag::NumberOrEmpty
+                                    && attr.value.contains(&b'&')
+                                {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(xml_reader.decoder())
+                                    {
+                                        current_type = CellTypeTag::from_bytes(v.as_bytes());
+                                    }
                                 }
                             } else if k.as_ref() == b"s" {
-                                if let Ok(v) = std::str::from_utf8(&attr.value) {
-                                    current_style = v.parse().unwrap_or(0);
+                                current_style = parse_style_index(&attr.value);
+                                if current_style == 0 && attr.value.contains(&b'&') {
+                                    if let Ok(v) =
+                                        attr.decode_and_unescape_value(xml_reader.decoder())
+                                    {
+                                        current_style = parse_style_index(v.as_bytes());
+                                    }
                                 }
                             }
                         }
@@ -1415,19 +1583,17 @@ pub fn read_single_cell<R: Read>(
                 b"f" => in_f = false,
                 b"t" => in_is_t = false,
                 b"c" => {
-                    if !current_coord.is_empty() {
-                        if let Ok((r, c)) = coordinate_to_tuple(&current_coord) {
-                            if r == target_row && c == target_col {
-                                return Ok(resolve_cell_value(
-                                    &current_type,
-                                    current_style,
-                                    &val_text,
-                                    &formula_text,
-                                    shared_strings,
-                                    styles,
-                                    data_only,
-                                ));
-                            }
+                    if let Some((r, c)) = current_cell_coord.take() {
+                        if r == target_row && c == target_col {
+                            return Ok(resolve_cell_value(
+                                current_type,
+                                current_style,
+                                &val_text,
+                                &formula_text,
+                                shared_strings,
+                                styles,
+                                data_only,
+                            ));
                         }
                     }
                 }

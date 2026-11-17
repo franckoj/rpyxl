@@ -62,6 +62,57 @@ pub fn column_index_from_string(col_str: &str) -> RpyxlResult<u32> {
     Ok(col as u32)
 }
 
+/// Parse a raw ASCII coordinate byte slice (e.g., b"A1", b"$B$12", b"c3") into (row, col) (1-based)
+/// without any heap allocation or string conversion. Returns None on malformed or out-of-bounds coordinates.
+#[inline]
+pub fn coordinate_bytes_to_tuple(bytes: &[u8]) -> Option<(u32, u32)> {
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let mut i = 0;
+    let len = bytes.len();
+
+    if bytes[i] == b'$' {
+        i += 1;
+    }
+
+    let col_start = i;
+    let mut col: u64 = 0;
+    while i < len && bytes[i].is_ascii_alphabetic() {
+        let val = (bytes[i].to_ascii_uppercase() - b'A' + 1) as u64;
+        col = col * 26 + val;
+        if col > MAX_COLUMN as u64 {
+            return None;
+        }
+        i += 1;
+    }
+
+    if i == col_start || col < MIN_COLUMN as u64 {
+        return None;
+    }
+
+    if i < len && bytes[i] == b'$' {
+        i += 1;
+    }
+
+    let row_start = i;
+    let mut row: u64 = 0;
+    while i < len && bytes[i].is_ascii_digit() {
+        row = row * 10 + (bytes[i] - b'0') as u64;
+        if row > MAX_ROW as u64 {
+            return None;
+        }
+        i += 1;
+    }
+
+    if i != len || i == row_start || row < MIN_ROW as u64 {
+        return None;
+    }
+
+    Some((row as u32, col as u32))
+}
+
 /// Parse a cell coordinate string (e.g., "A1", "$B$12", "c3") into (row, col) (1-based).
 pub fn coordinate_to_tuple(coord: &str) -> RpyxlResult<(u32, u32)> {
     let clean = coord.trim();
@@ -234,6 +285,22 @@ mod tests {
         assert!(coordinate_to_tuple("A0").is_err());
         assert!(coordinate_to_tuple("A1048577").is_err());
         assert!(coordinate_to_tuple("invalid").is_err());
+    }
+
+    #[test]
+    fn test_coordinate_bytes_to_tuple() {
+        assert_eq!(coordinate_bytes_to_tuple(b"A1"), Some((1, 1)));
+        assert_eq!(coordinate_bytes_to_tuple(b"$B$10"), Some((10, 2)));
+        assert_eq!(coordinate_bytes_to_tuple(b"AA100"), Some((100, 27)));
+        assert_eq!(
+            coordinate_bytes_to_tuple(b"xfd1048576"),
+            Some((1048576, 16384))
+        );
+        assert_eq!(coordinate_bytes_to_tuple(b"A0"), None);
+        assert_eq!(coordinate_bytes_to_tuple(b"A1048577"), None);
+        assert_eq!(coordinate_bytes_to_tuple(b"XFE1"), None);
+        assert_eq!(coordinate_bytes_to_tuple(b""), None);
+        assert_eq!(coordinate_bytes_to_tuple(b"invalid"), None);
     }
 
     #[test]

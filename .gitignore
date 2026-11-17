@@ -25,5 +25,6 @@ build/
 
 # Benchmark artifacts
 benchmarks/data/
+bench_*/
 .tools/
 
