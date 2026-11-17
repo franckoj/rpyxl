@@ -24,6 +24,8 @@ class Worksheet:
         self.parent = parent
         self._native = native
         self._number_formats = None
+        self._write_only = getattr(parent, "write_only", False)
+        self._read_only = getattr(parent, "read_only", False)
 
     def __getattr__(self, name):
         return getattr(self._native, name)
@@ -95,20 +97,25 @@ class Worksheet:
                     return (col, row) != (c1, r1)
         return False
 
+    @property
+    def _may_have_merges(self):
+        if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
+            return True
+        book = self.parent._book
+        metadata = book.sheets.get(self.title) if book is not None else None
+        return bool(metadata is not None and metadata.merged_cells.ranges)
+
     def _wrap_cell(self, native, row=None, column=None):
+        if not self._may_have_merges:
+            return Cell(self, native)
         if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
             r = row if row is not None else native.row
             c = column if column is not None else native.column
             is_merged = self._native._is_merged_cell(r, c)
         else:
-            book = self.parent._book
-            metadata = book.sheets.get(self.title) if book is not None else None
-            if metadata is not None and metadata.merged_cells.ranges:
-                r = row if row is not None else native.row
-                c = column if column is not None else native.column
-                is_merged = self._is_merged(c, r)
-            else:
-                is_merged = False
+            r = row if row is not None else native.row
+            c = column if column is not None else native.column
+            is_merged = self._is_merged(c, r)
         cls = MergedCell if is_merged else Cell
         return cls(self, native)
 
@@ -122,9 +129,9 @@ class Worksheet:
             if not 1 <= row <= 1048576:
                 raise ValueError("Row outside Excel limits")
             raise ValueError("Column outside Excel limits")
-        if self.parent.write_only:
+        if self._write_only:
             raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'cell'")
-        if self.parent.read_only and value is not None:
+        if value is not None and self._read_only:
             self._check_writable()
         native = self._native.cell(row=row, column=column)
         cell = self._wrap_cell(native, row=row, column=column)
@@ -157,7 +164,7 @@ class Worksheet:
         return self.append_rows(iterable_of_rows)
 
     def iter_rows(self, min_row=None, max_row=None, min_col=None, max_col=None, values_only=False):
-        if self.parent.write_only:
+        if self._write_only:
             raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_rows'")
         args = {
             "min_row": min_row,
@@ -167,37 +174,21 @@ class Worksheet:
         }
         if values_only:
             return iter(self._native.iter_rows(values_only=True, **args))
-        if self.parent.read_only:
+        if self._read_only:
             return (
                 tuple(self._wrap_cell(cell) for cell in row)
                 for row in self._native.iter_rows(values_only=False, **args)
             )
-        if self.dimensions == "A1" and all(value is None for value in args.values()):
-            return (
-                tuple(self._wrap_cell(cell) for cell in row)
-                for row in self._native.iter_rows(values_only=False)
-            )
 
-        # The editable native iterator currently builds a list. Request one row
-        # at a time, so wrapping cells never builds a full Python worksheet grid.
-        def rows():
-            start, end = min_row or self.min_row or 1, max_row or self.max_row or 1
-            for row in range(start, end + 1):
-                for cells in self._native.iter_rows(
-                    min_row=row,
-                    max_row=row,
-                    min_col=min_col,
-                    max_col=max_col,
-                    values_only=False,
-                ):
-                    yield tuple(self._wrap_cell(cell) for cell in cells)
-
-        return rows()
+        row_iter = self._native.iter_rows(values_only=False, **args)
+        if not self._may_have_merges:
+            return (tuple(Cell(self, cell) for cell in row) for row in row_iter)
+        return (tuple(self._wrap_cell(cell) for cell in row) for row in row_iter)
 
     def iter_cols(self, min_col=None, max_col=None, min_row=None, max_row=None, values_only=False):
-        if self.parent.write_only:
+        if self._write_only:
             raise AttributeError("'WriteOnlyWorksheet' object has no attribute 'iter_cols'")
-        if self.parent.read_only:
+        if self._read_only:
             raise NotImplementedError("Column iteration is unavailable in read-only mode")
         args = {
             "min_col": min_col,
@@ -207,26 +198,11 @@ class Worksheet:
         }
         if values_only:
             return iter(self._native.iter_cols(values_only=True, **args))
-        if self.dimensions == "A1" and all(value is None for value in args.values()):
-            return (
-                tuple(self._wrap_cell(cell) for cell in col)
-                for col in self._native.iter_cols(values_only=False)
-            )
 
-        def columns():
-            for col in range(
-                min_col or self.min_column or 1, (max_col or self.max_column or 1) + 1
-            ):
-                for cells in self._native.iter_cols(
-                    min_col=col,
-                    max_col=col,
-                    min_row=min_row,
-                    max_row=max_row,
-                    values_only=False,
-                ):
-                    yield tuple(self._wrap_cell(cell) for cell in cells)
-
-        return columns()
+        col_iter = self._native.iter_cols(values_only=False, **args)
+        if not self._may_have_merges:
+            return (tuple(Cell(self, cell) for cell in col) for col in col_iter)
+        return (tuple(self._wrap_cell(cell) for cell in col) for col in col_iter)
 
     @property
     def rows(self):

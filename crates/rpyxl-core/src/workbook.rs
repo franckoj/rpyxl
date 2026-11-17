@@ -20,6 +20,7 @@ pub struct Workbook {
     source_styles: Vec<Arc<RichStyle>>,
     source_style_ids: HashMap<usize, usize>,
     pub compression_level: Option<i32>,
+    pub version: u64,
 }
 
 impl PartialEq for Workbook {
@@ -57,6 +58,7 @@ impl Workbook {
             source_styles: Vec::new(),
             source_style_ids: HashMap::new(),
             compression_level: None,
+            version: 0,
         }
     }
 
@@ -72,7 +74,18 @@ impl Workbook {
             source_styles: Vec::new(),
             source_style_ids: HashMap::new(),
             compression_level: None,
+            version: 0,
         }
+    }
+
+    #[inline]
+    pub fn version(&self) -> u64 {
+        self.version
+    }
+
+    #[inline]
+    pub fn bump_version(&mut self) {
+        self.version = self.version.wrapping_add(1);
     }
 
     pub fn set_source_styles(&mut self, styles: Vec<Arc<RichStyle>>) {
@@ -132,6 +145,7 @@ impl Workbook {
     }
 
     pub fn active_mut(&mut self) -> &mut Worksheet {
+        self.bump_version();
         &mut self.sheets[self.active_index]
     }
 
@@ -161,6 +175,7 @@ impl Workbook {
     }
 
     pub fn get_sheet_mut(&mut self, title: &str) -> Option<&mut Worksheet> {
+        self.bump_version();
         self.sheets.iter_mut().find(|s| s.title == title)
     }
 
@@ -169,6 +184,7 @@ impl Workbook {
     }
 
     pub fn get_sheet_by_index_mut(&mut self, index: usize) -> Option<&mut Worksheet> {
+        self.bump_version();
         self.sheets.get_mut(index)
     }
 
@@ -196,6 +212,7 @@ impl Workbook {
         let insert_idx = index.unwrap_or(self.sheets.len()).min(self.sheets.len());
 
         self.sheets.insert(insert_idx, new_ws);
+        self.bump_version();
         Ok(&mut self.sheets[insert_idx])
     }
 
@@ -211,6 +228,7 @@ impl Workbook {
             .ok_or_else(|| RpyxlError::SheetNotFound(title.to_string()))?;
 
         self.sheets.remove(pos);
+        self.bump_version();
 
         if self.active_index >= self.sheets.len() {
             self.active_index = self.sheets.len() - 1;
@@ -243,6 +261,7 @@ impl Workbook {
             .ok_or_else(|| RpyxlError::SheetNotFound(old_title.to_string()))?;
 
         ws.set_title(new_title)?;
+        self.bump_version();
         Ok(())
     }
 
@@ -276,6 +295,7 @@ impl Workbook {
         new_ws.set_title(&copy_title)?;
 
         self.sheets.push(new_ws);
+        self.bump_version();
         Ok(self.sheets.last_mut().expect("just pushed"))
     }
 
@@ -308,6 +328,7 @@ impl Workbook {
     }
 
     pub fn sheets_mut(&mut self) -> &mut [Worksheet] {
+        self.bump_version();
         &mut self.sheets
     }
 }

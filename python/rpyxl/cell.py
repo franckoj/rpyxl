@@ -19,6 +19,22 @@ class Cell:
         return getattr(self._native, name)
 
     @property
+    def row(self):
+        return self._native.row
+
+    @property
+    def column(self):
+        return self._native.column
+
+    @property
+    def coordinate(self):
+        return self._native.coordinate
+
+    @property
+    def column_letter(self):
+        return self._native.column_letter
+
+    @property
     def value(self):
         return self._native.value
 
