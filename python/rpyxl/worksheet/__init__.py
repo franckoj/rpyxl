@@ -193,15 +193,18 @@ class Worksheet:
         if values_only:
             return iter(self._native.iter_rows(values_only=True, **args))
         if self._read_only:
+            wrap = self._wrap_cell
             return (
-                tuple(self._wrap_cell(cell) for cell in row)
+                tuple(wrap(cell) for cell in row)
                 for row in self._native.iter_rows(values_only=False, **args)
             )
 
         row_iter = self._native.iter_rows(values_only=False, **args)
         if not self._may_have_merges:
-            return (tuple(Cell(self, cell) for cell in row) for row in row_iter)
-        return (tuple(self._wrap_cell(cell) for cell in row) for row in row_iter)
+            cell_cls = Cell
+            return (tuple(cell_cls(self, cell) for cell in row) for row in row_iter)
+        wrap = self._wrap_cell
+        return (tuple(wrap(cell) for cell in row) for row in row_iter)
 
     def iter_cols(self, min_col=None, max_col=None, min_row=None, max_row=None, values_only=False):
         if self._write_only:
@@ -219,8 +222,10 @@ class Worksheet:
 
         col_iter = self._native.iter_cols(values_only=False, **args)
         if not self._may_have_merges:
-            return (tuple(Cell(self, cell) for cell in col) for col in col_iter)
-        return (tuple(self._wrap_cell(cell) for cell in col) for col in col_iter)
+            cell_cls = Cell
+            return (tuple(cell_cls(self, cell) for cell in col) for col in col_iter)
+        wrap = self._wrap_cell
+        return (tuple(wrap(cell) for cell in col) for col in col_iter)
 
     @property
     def rows(self):

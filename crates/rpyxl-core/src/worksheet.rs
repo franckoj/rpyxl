@@ -429,12 +429,29 @@ impl Worksheet {
             return Err(RpyxlError::RowOutOfBounds(target_row));
         }
 
+        let len = values.len() as u32;
+        if len > MAX_COLUMN {
+            return Err(RpyxlError::ColumnOutOfBounds(len));
+        }
+
+        self.cached_min_row.get_or_insert(target_row);
+        self.cached_max_row = Some(target_row);
+        self.cached_min_col.get_or_insert(MIN_COLUMN);
+        self.cached_max_col = Some(self.cached_max_col.map_or(len, |c| c.max(len)));
+
         for (idx, val) in values.into_iter().enumerate() {
             let col = (idx as u32) + 1;
-            if col > MAX_COLUMN {
-                return Err(RpyxlError::ColumnOutOfBounds(col));
+            let temporal_format = match &val {
+                CellValue::Date(_) => Some("yyyy-mm-dd"),
+                CellValue::DateTime(text) if !text.contains('-') => Some("h:mm:ss.000"),
+                CellValue::DateTime(_) => Some("yyyy-mm-dd h:mm:ss.000"),
+                _ => None,
+            };
+            let mut cell = Cell::new(target_row, col, val);
+            if let Some(code) = temporal_format {
+                cell.number_format = Some(code.to_string());
             }
-            self.set_cell_value(target_row, col, val)?;
+            self.cells.insert((target_row, col), cell);
         }
 
         Ok(target_row)
@@ -461,34 +478,27 @@ impl Worksheet {
                 current_row += 1;
                 continue;
             }
+            let len = row_values.len() as u32;
+            if len > MAX_COLUMN {
+                return Err(RpyxlError::ColumnOutOfBounds(len));
+            }
+            if len > max_col_seen {
+                max_col_seen = len;
+            }
+
             for (idx, val) in row_values.into_iter().enumerate() {
                 let col = (idx as u32) + 1;
-                if col > MAX_COLUMN {
-                    return Err(RpyxlError::ColumnOutOfBounds(col));
+                let temporal_format = match &val {
+                    CellValue::Date(_) => Some("yyyy-mm-dd"),
+                    CellValue::DateTime(text) if !text.contains('-') => Some("h:mm:ss.000"),
+                    CellValue::DateTime(_) => Some("yyyy-mm-dd h:mm:ss.000"),
+                    _ => None,
+                };
+                let mut cell = Cell::new(current_row, col, val);
+                if let Some(code) = temporal_format {
+                    cell.number_format = Some(code.to_string());
                 }
-                if col > max_col_seen {
-                    max_col_seen = col;
-                }
-                let cell = self
-                    .cells
-                    .entry((current_row, col))
-                    .or_insert_with(|| Cell::new(current_row, col, CellValue::Empty));
-                if cell
-                    .number_format
-                    .as_deref()
-                    .is_none_or(|code| code == "General")
-                {
-                    let temporal_format = match &val {
-                        CellValue::Date(_) => Some("yyyy-mm-dd"),
-                        CellValue::DateTime(text) if !text.contains('-') => Some("h:mm:ss.000"),
-                        CellValue::DateTime(_) => Some("yyyy-mm-dd h:mm:ss.000"),
-                        _ => None,
-                    };
-                    if let Some(code) = temporal_format {
-                        cell.number_format = Some(code.to_string());
-                    }
-                }
-                cell.value = val;
+                self.cells.insert((current_row, col), cell);
             }
             current_row += 1;
         }

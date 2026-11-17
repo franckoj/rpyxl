@@ -309,41 +309,49 @@ fn write_binary_output(value: &Bound<'_, PyAny>, bytes: &[u8]) -> PyResult<()> {
 pub fn python_value_to_cell_value(val: &Bound<'_, PyAny>) -> PyResult<CellValue> {
     if val.is_none() {
         Ok(CellValue::Empty)
-    } else if val.is_instance_of::<PyBool>() {
-        Ok(CellValue::Bool(val.extract::<bool>()?))
-    } else if val.is_instance_of::<PyInt>() {
-        Ok(CellValue::Int(val.extract::<i64>()?))
-    } else if val.is_instance_of::<PyFloat>() {
-        Ok(CellValue::Float(val.extract::<f64>()?))
-    } else if val.is_instance_of::<PyString>() {
-        let s = val.extract::<String>()?;
+    } else if let Ok(b) = val.downcast::<PyBool>() {
+        Ok(CellValue::Bool(b.is_true()))
+    } else if let Ok(i) = val.downcast::<PyInt>() {
+        Ok(CellValue::Int(i.extract::<i64>()?))
+    } else if let Ok(f) = val.downcast::<PyFloat>() {
+        Ok(CellValue::Float(f.extract::<f64>()?))
+    } else if let Ok(py_str) = val.downcast::<PyString>() {
+        let s = py_str.extract::<String>()?;
         if s.starts_with('=') {
             Ok(CellValue::Formula {
-                formula: s,
+                formula: s.to_string(),
                 cached_value: None,
             })
         } else {
-            Ok(CellValue::String(s))
+            Ok(CellValue::String(s.to_string()))
         }
     } else {
-        let datetime = val.py().import_bound("datetime")?;
-        let is_datetime = val.is_instance(&datetime.getattr("datetime")?)?;
-        let is_time = val.is_instance(&datetime.getattr("time")?)?;
-        let is_date = val.is_instance(&datetime.getattr("date")?)?;
-        if is_datetime || is_time || is_date {
-            if (is_datetime || is_time) && !val.call_method0("utcoffset")?.is_none() {
-                return Err(PyValueError::new_err(
-                    "Excel does not support timezone-aware datetime or time values",
-                ));
+        let py = val.py();
+        let type_name = val.get_type().name()?;
+        if type_name == "datetime" || type_name == "date" || type_name == "time" {
+            let datetime = py.import_bound(pyo3::intern!(py, "datetime"))?;
+            let is_datetime = val.is_instance(&datetime.getattr(pyo3::intern!(py, "datetime"))?)?;
+            let is_time = val.is_instance(&datetime.getattr(pyo3::intern!(py, "time"))?)?;
+            let is_date = val.is_instance(&datetime.getattr(pyo3::intern!(py, "date"))?)?;
+            if is_datetime || is_time || is_date {
+                if (is_datetime || is_time)
+                    && !val.call_method0(pyo3::intern!(py, "utcoffset"))?.is_none()
+                {
+                    return Err(PyValueError::new_err(
+                        "Excel does not support timezone-aware datetime or time values",
+                    ));
+                }
+                let s = val
+                    .call_method0(pyo3::intern!(py, "isoformat"))?
+                    .extract::<String>()?;
+                return Ok(if is_datetime || is_time {
+                    // Keep time-only ISO values in the existing variant. The current
+                    // OOXML writer persists those as text, not numeric Excel times.
+                    CellValue::DateTime(s)
+                } else {
+                    CellValue::Date(s)
+                });
             }
-            let s = val.call_method0("isoformat")?.extract::<String>()?;
-            return Ok(if is_datetime || is_time {
-                // Keep time-only ISO values in the existing variant. The current
-                // OOXML writer persists those as text, not numeric Excel times.
-                CellValue::DateTime(s)
-            } else {
-                CellValue::Date(s)
-            });
         }
         // Fallback: convert to string representation
         let s = val.str()?.to_string();
@@ -850,6 +858,11 @@ impl PyWorksheet {
             }
         }
 
+        let prepared_val = match value {
+            Some(v) => Some(python_value_to_cell_value(v)?),
+            None => None,
+        };
+
         let (ver, final_val) = {
             let mut wb = self.wb.write();
             let is_data_only = wb.is_data_only();
@@ -858,8 +871,7 @@ impl PyWorksheet {
                 .ok_or_else(|| RpyxlError::SheetNotFound(title.to_string()))
                 .map_err(map_rpyxl_err)?;
 
-            let cell_val = if let Some(v) = value {
-                let cell_val = python_value_to_cell_value(v)?;
+            let cell_val = if let Some(cell_val) = prepared_val {
                 ws.set_cell_value(row, column, cell_val.clone())
                     .map_err(map_rpyxl_err)?;
                 cell_val
@@ -1366,17 +1378,19 @@ impl PyWorksheet {
         max_col: Option<u32>,
         values_only: bool,
     ) -> PyResult<PyWorksheetRowIterator> {
-        let (is_empty, (r_start, r_end, c_start, c_end), data_only) = {
+        let (is_empty, (r_start, r_end, c_start, c_end), data_only, cached_sheet_idx) = {
             let wb = self.wb.read();
             let title = self.sheet_title.read();
-            let ws = wb
-                .get_sheet(&title)
+            let idx = wb.sheets().iter().position(|s| s.title == *title);
+            let ws = idx
+                .and_then(|i| wb.get_sheet_by_index(i))
                 .ok_or_else(|| RpyxlError::SheetNotFound((*title).clone()))
                 .map_err(map_rpyxl_err)?;
             (
                 ws.is_empty(),
                 ws.resolve_bounds(min_row, max_row, min_col, max_col),
                 wb.is_data_only(),
+                idx,
             )
         };
 
@@ -1400,6 +1414,7 @@ impl PyWorksheet {
             c_end,
             values_only,
             data_only,
+            cached_sheet_idx,
         })
     }
 
@@ -1412,17 +1427,19 @@ impl PyWorksheet {
         max_row: Option<u32>,
         values_only: bool,
     ) -> PyResult<PyWorksheetColIterator> {
-        let (is_empty, (r_start, r_end, c_start, c_end), data_only) = {
+        let (is_empty, (r_start, r_end, c_start, c_end), data_only, cached_sheet_idx) = {
             let wb = self.wb.read();
             let title = self.sheet_title.read();
-            let ws = wb
-                .get_sheet(&title)
+            let idx = wb.sheets().iter().position(|s| s.title == *title);
+            let ws = idx
+                .and_then(|i| wb.get_sheet_by_index(i))
                 .ok_or_else(|| RpyxlError::SheetNotFound((*title).clone()))
                 .map_err(map_rpyxl_err)?;
             (
                 ws.is_empty(),
                 ws.resolve_bounds(min_row, max_row, min_col, max_col),
                 wb.is_data_only(),
+                idx,
             )
         };
 
@@ -1446,6 +1463,7 @@ impl PyWorksheet {
             r_end,
             values_only,
             data_only,
+            cached_sheet_idx,
         })
     }
 
@@ -2004,6 +2022,7 @@ pub struct PyWorksheetRowIterator {
     pub(crate) c_end: u32,
     pub(crate) values_only: bool,
     pub(crate) data_only: bool,
+    pub(crate) cached_sheet_idx: Option<usize>,
 }
 
 #[pymethods]
@@ -2021,10 +2040,27 @@ impl PyWorksheetRowIterator {
 
         let wb = self.wb.read();
         let title_guard = self.sheet_title.read();
-        let ws = wb
-            .get_sheet(&title_guard)
-            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
-            .map_err(map_rpyxl_err)?;
+        let ws = if let Some(idx) = self.cached_sheet_idx {
+            match wb.get_sheet_by_index(idx) {
+                Some(ws) if ws.title == *title_guard => ws,
+                _ => {
+                    let ws = wb
+                        .get_sheet(&title_guard)
+                        .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+                        .map_err(map_rpyxl_err)?;
+                    self.cached_sheet_idx =
+                        wb.sheets().iter().position(|st| st.title == *title_guard);
+                    ws
+                }
+            }
+        } else {
+            let ws = wb
+                .get_sheet(&title_guard)
+                .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+                .map_err(map_rpyxl_err)?;
+            self.cached_sheet_idx = wb.sheets().iter().position(|st| st.title == *title_guard);
+            ws
+        };
 
         let width = (self.c_end.saturating_sub(self.c_start) + 1) as usize;
         let mut row_items = Vec::with_capacity(width);
@@ -2107,6 +2143,7 @@ pub struct PyWorksheetColIterator {
     pub(crate) r_end: u32,
     pub(crate) values_only: bool,
     pub(crate) data_only: bool,
+    pub(crate) cached_sheet_idx: Option<usize>,
 }
 
 #[pymethods]
@@ -2124,10 +2161,27 @@ impl PyWorksheetColIterator {
 
         let wb = self.wb.read();
         let title_guard = self.sheet_title.read();
-        let ws = wb
-            .get_sheet(&title_guard)
-            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
-            .map_err(map_rpyxl_err)?;
+        let ws = if let Some(idx) = self.cached_sheet_idx {
+            match wb.get_sheet_by_index(idx) {
+                Some(ws) if ws.title == *title_guard => ws,
+                _ => {
+                    let ws = wb
+                        .get_sheet(&title_guard)
+                        .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+                        .map_err(map_rpyxl_err)?;
+                    self.cached_sheet_idx =
+                        wb.sheets().iter().position(|st| st.title == *title_guard);
+                    ws
+                }
+            }
+        } else {
+            let ws = wb
+                .get_sheet(&title_guard)
+                .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+                .map_err(map_rpyxl_err)?;
+            self.cached_sheet_idx = wb.sheets().iter().position(|st| st.title == *title_guard);
+            ws
+        };
 
         let height = (self.r_end.saturating_sub(self.r_start) + 1) as usize;
         let mut col_items = Vec::with_capacity(height);
