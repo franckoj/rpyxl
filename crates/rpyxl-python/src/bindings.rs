@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -384,13 +383,15 @@ pub fn dict_to_cell_row(dict: &Bound<'_, PyDict>) -> PyResult<Vec<CellValue>> {
 pub fn cell_value_to_python<'py>(py: Python<'py>, val: &CellValue) -> PyResult<Bound<'py, PyAny>> {
     match val {
         CellValue::Empty => Ok(py.None().into_bound(py)),
-        CellValue::String(s) => Ok(s.to_object(py).into_bound(py)),
-        CellValue::Int(i) => Ok(i.to_object(py).into_bound(py)),
-        CellValue::Float(f) => Ok(f.to_object(py).into_bound(py)),
-        CellValue::Bool(b) => Ok(b.to_object(py).into_bound(py)),
+        CellValue::String(s) => Ok(pyo3::types::PyString::new_bound(py, s).into_any()),
+        CellValue::Int(i) => Ok(i.into_py(py).into_bound(py)),
+        CellValue::Float(f) => Ok(pyo3::types::PyFloat::new_bound(py, *f).into_any()),
+        CellValue::Bool(b) => Ok(pyo3::types::PyBool::new_bound(py, *b).to_owned().into_any()),
         CellValue::Date(d) => date_str_to_pydate(py, d),
         CellValue::DateTime(dt) => date_str_to_pydatetime(py, dt),
-        CellValue::Formula { formula, .. } => Ok(formula.to_object(py).into_bound(py)),
+        CellValue::Formula { formula, .. } => {
+            Ok(pyo3::types::PyString::new_bound(py, formula).into_any())
+        }
     }
 }
 
@@ -408,12 +409,22 @@ fn date_str_to_pydatetime<'py>(py: Python<'py>, s: &str) -> PyResult<Bound<'py, 
 }
 
 fn parse_iso_temporal<'py>(py: Python<'py>, kind: &str, s: &str) -> PyResult<Bound<'py, PyAny>> {
-    let cls = py.import_bound("datetime")?.getattr(kind)?;
+    let dt_module = py.import_bound(pyo3::intern!(py, "datetime"))?;
+    let cls = match kind {
+        "date" => dt_module.getattr(pyo3::intern!(py, "date"))?,
+        "time" => dt_module.getattr(pyo3::intern!(py, "time"))?,
+        _ => dt_module.getattr(pyo3::intern!(py, "datetime"))?,
+    };
     // Python 3.9/3.10 fromisoformat does not accept the UTC Z suffix.
     let normalized = s.strip_suffix('Z').map(|s| format!("{}+00:00", s));
-    match cls.call_method1("fromisoformat", (normalized.as_deref().unwrap_or(s),)) {
+    match cls.call_method1(
+        pyo3::intern!(py, "fromisoformat"),
+        (normalized.as_deref().unwrap_or(s),),
+    ) {
         Ok(value) => Ok(value),
-        Err(err) if err.is_instance_of::<PyValueError>(py) => Ok(s.to_object(py).into_bound(py)),
+        Err(err) if err.is_instance_of::<PyValueError>(py) => {
+            Ok(pyo3::types::PyString::new_bound(py, s).into_any())
+        }
         Err(err) => Err(err),
     }
 }
@@ -2025,11 +2036,11 @@ impl PyWorksheetRowIterator {
 
         if self.values_only {
             for c in self.c_start..=self.c_end {
-                let is_match = match row_cell_iter.peek() {
-                    Some((&(_, col), _)) => col == c,
-                    None => false,
-                };
-                let cell_ref = if is_match {
+                let cell_ref = if row_cell_iter
+                    .peek()
+                    .map(|(&(_, col), _)| col == c)
+                    .unwrap_or(false)
+                {
                     row_cell_iter.next().map(|(_, cell)| cell)
                 } else {
                     None
@@ -2048,11 +2059,11 @@ impl PyWorksheetRowIterator {
         } else {
             let version = wb.version();
             for c in self.c_start..=self.c_end {
-                let is_match = match row_cell_iter.peek() {
-                    Some((&(_, col), _)) => col == c,
-                    None => false,
-                };
-                let cell_ref = if is_match {
+                let cell_ref = if row_cell_iter
+                    .peek()
+                    .map(|(&(_, col), _)| col == c)
+                    .unwrap_or(false)
+                {
                     row_cell_iter.next().map(|(_, cell)| cell)
                 } else {
                     None
@@ -2186,7 +2197,7 @@ impl PyRowIterator {
     fn __next__<'py>(&mut self, py: Python<'py>) -> PyResult<Option<Bound<'py, PyTuple>>> {
         let rx = &mut self.rx;
         match py.allow_threads(move || rx.recv()) {
-            Ok(Ok(Some(cells))) => {
+            Ok(Ok(Some(mut cells))) => {
                 let row_num = self.current_row_idx;
                 self.current_row_idx += 1;
 
@@ -2194,15 +2205,18 @@ impl PyRowIterator {
                     .max_col
                     .unwrap_or_else(|| cells.iter().map(|(c, _)| *c).max().unwrap_or(self.min_col));
                 let width = (effective_max_col.saturating_sub(self.min_col) + 1) as usize;
-                let mut cell_map = HashMap::with_capacity(cells.len());
-                for (col, val) in cells {
-                    cell_map.insert(col, val);
+
+                if cells.windows(2).any(|w| w[0].0 > w[1].0) {
+                    cells.sort_by_key(|(c, _)| *c);
                 }
 
                 let mut row_items = Vec::with_capacity(width);
+                let mut cell_iter = cells.into_iter().peekable();
+
                 if self.values_only {
                     for col in self.min_col..=effective_max_col {
-                        if let Some(val) = cell_map.remove(&col) {
+                        if cell_iter.peek().map(|(c, _)| *c == col).unwrap_or(false) {
+                            let (_, val) = cell_iter.next().unwrap();
                             let resolved = match val {
                                 CellValue::Formula {
                                     cached_value,
@@ -2228,7 +2242,8 @@ impl PyRowIterator {
                     for col in self.min_col..=effective_max_col {
                         let coord = tuple_to_coordinate(row_num, col).map_err(map_rpyxl_err)?;
                         let col_letter = get_column_letter(col).map_err(map_rpyxl_err)?;
-                        if let Some(val) = cell_map.remove(&col) {
+                        if cell_iter.peek().map(|(c, _)| *c == col).unwrap_or(false) {
+                            let (_, val) = cell_iter.next().unwrap();
                             let dt = val.data_type();
                             let resolved = match val {
                                 CellValue::Formula {
