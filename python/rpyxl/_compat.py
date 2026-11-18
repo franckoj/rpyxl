@@ -50,14 +50,17 @@ def cell_metadata_property(name):
                 lambda assigned: reader.set(self, name, assigned),
                 self.parent._check_writable,
             )
-        cells = workbook._sheet_metadata(self.parent.title, full=False).cells
-        coordinate = self.coordinate
-        metadata = cells.get(coordinate)
+        metadata = getattr(self, "_metadata", None)
         if metadata is None:
-            metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
-        elif not metadata.row:
-            metadata.row = self.row
-            metadata.column = self.column
+            cells = workbook._sheet_metadata(self.parent.title, full=False).cells
+            coordinate = self.coordinate
+            metadata = cells.get(coordinate)
+            if metadata is None:
+                metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
+            elif not metadata.row:
+                metadata.row = self.row
+                metadata.column = self.column
+            self._metadata = metadata
         value = getattr(metadata, name)
         workbook = self.parent.parent
         pool = workbook._style_pool
@@ -83,14 +86,17 @@ def cell_metadata_property(name):
         if workbook._native_style_reader is not None:
             workbook._native_style_reader.set(self, name, pool.assign(value))
             return
-        cells = workbook._sheet_metadata(self.parent.title, full=False).cells
-        coordinate = self.coordinate
-        metadata = cells.get(coordinate)
+        metadata = getattr(self, "_metadata", None)
         if metadata is None:
-            metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
-        elif not metadata.row:
-            metadata.row = self.row
-            metadata.column = self.column
+            cells = workbook._sheet_metadata(self.parent.title, full=False).cells
+            coordinate = self.coordinate
+            metadata = cells.get(coordinate)
+            if metadata is None:
+                metadata = cells[coordinate] = CellMetadata(row=self.row, column=self.column)
+            elif not metadata.row:
+                metadata.row = self.row
+                metadata.column = self.column
+            self._metadata = metadata
         store(metadata, pool.assign(value))
 
     return property(get, set)

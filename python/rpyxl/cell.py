@@ -9,11 +9,12 @@ from ._models import CellMetadata, Hyperlink
 
 
 class Cell:
-    __slots__ = ("_native", "parent")
+    __slots__ = ("_native", "parent", "_metadata")
 
     def __init__(self, parent, native):
         self.parent = parent
         self._native = native
+        self._metadata = None
 
     def __getattr__(self, name):
         return getattr(self._native, name)
