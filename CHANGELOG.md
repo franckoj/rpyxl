@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [0.5.1] - 2026-11-18
+
+This release introduces comprehensive performance optimizations and native serialization enhancements for styled writes, speeding up styled saving by **7.0x** (1.31s vs 9.20s baseline), reducing output file sizes by ~4% (smaller than openpyxl), and adding fast bulk styling APIs.
+
+### Added
+- **Native Freeze Panes OOXML Serialization**: Implemented native `freeze_panes` in `rpyxl-core`, `rpyxl-ooxml`, and `rpyxl-python`, completely eliminating the legacy Python ZIP-extraction and `ElementTree` re-serialization fallback.
+- **Bulk Range Styling API (`Worksheet.apply_style`)**: Added `ws.apply_style("A1:E50000", ...)` to snapshot and intern styles once before mass application across cell ranges in a single vectorized pass (~0.52s for 250k cells).
+- **Direct Style Keywords in `Worksheet.cell()`**: Added optional `font`, `fill`, `border`, `alignment`, and `protection` kwargs to `ws.cell(...)` for single-statement cell creation and styling without multiple property setter round-trips.
+- **Random People Benchmark**: Added `benchmarks/benchmark_people_write.py` comparing rpyxl against openpyxl across plain write, streaming write_only, and styled write workloads.
+
+### Changed & Optimized
+- **7.0x Faster Styled Writes Save Phase**: Reduced styled save time from 9.20s down to 1.31s on 250,000 cells (4.52x faster than openpyxl). Total styled write time dropped from 13.87s to 5.41s (2.15x faster than openpyxl; 4.24s with bulk keyword styling).
+- **Smart Whitespace XML Serialization**: Emits `xml:space="preserve"` only when cell strings actually contain leading or trailing whitespace, reducing raw XML by 4.2 MB across 200k string cells and producing archives smaller than openpyxl (1.57 MB vs 1.63 MB).
+- **Zero-Alloc Coordinate Byte Formatting**: Added `_LETTERS` lookup tuple on `Cell` view for fast ASCII column coordinate resolution (`col <= 26`), caching `_row` and `_column` attributes and avoiding redundant PyO3 FFI string allocations.
+- **Style Compilation Fast-Path**: Replaced 250,000 `coordinate_parts()` string parses in `compile_style_records` by directly utilizing pre-cached integer coordinates on cell metadata.
+
+---
+
 ## [0.5.0] - 2026-11-18
 
 This release introduces next-generation performance architecture spanning Tier 1 zero-allocation I/O & XML acceleration, Tier 2 row-chunked memory & streaming iteration optimizations, and a direct scalar cell write fast-path, delivering **6x to 18x speedups** over openpyxl 3.1.5 and up to **6.17x speedup** over rpyxl 0.4.0.
