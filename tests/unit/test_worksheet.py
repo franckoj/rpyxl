@@ -200,3 +200,38 @@ def test_range_slice():
     assert slice_res[0][1].value == 2
     assert slice_res[1][0].value == 3
     assert slice_res[1][1].value == 4
+
+
+def test_cell_with_style_kwargs():
+    from rpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    f = Font(name="Arial", size=12, bold=True)
+    p = PatternFill(fill_type="solid", fgColor="FFFF00")
+    a = Alignment(horizontal="center")
+
+    c = ws.cell(row=2, column=3, value="Styled", font=f, fill=p, alignment=a)
+    assert c.value == "Styled"
+    assert c.font.bold is True
+    assert c.font.name == "Arial"
+    assert c.fill.fill_type == "solid"
+    assert c.alignment.horizontal == "center"
+
+
+def test_apply_style_bulk():
+    from rpyxl.styles import Alignment, Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    f = Font(name="Arial", size=10, bold=True)
+    p = PatternFill(fill_type="solid", fgColor="EAF1FB")
+    a = Alignment(horizontal="right")
+
+    ws.apply_style("A1:C3", font=f, fill=p, alignment=a)
+    for row in ws["A1:C3"]:
+        for cell in row:
+            assert cell.font.bold is True
+            assert cell.font.size == 10
+            assert cell.fill.fill_type == "solid"
+            assert cell.alignment.horizontal == "right"

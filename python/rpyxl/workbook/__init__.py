@@ -72,6 +72,7 @@ class Workbook(metaclass=_WorkbookMeta):
         self._sheets = {}
         self._overlay = False
         self._closed = False
+        self._read_only = getattr(self._native, "read_only", False)
         self._native_style_reader = None
         if self._native_package_api and self._has_original:
             from .._native_style_read import NativeStyleReader
@@ -88,7 +89,7 @@ class Workbook(metaclass=_WorkbookMeta):
 
     @property
     def read_only(self):
-        return self._native.read_only
+        return self._read_only
 
     @property
     def write_only(self):
@@ -106,7 +107,7 @@ class Workbook(metaclass=_WorkbookMeta):
     def _check_writable(self):
         if self._closed:
             raise ValueError("Workbook is closed")
-        if self.read_only:
+        if self._read_only:
             raise TypeError("Cannot modify a read-only workbook")
 
     def _ensure_metadata(self, full=True, *, load_original=None):

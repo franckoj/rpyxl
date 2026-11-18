@@ -7,8 +7,10 @@ from .._compat import (
     structural_metadata,
 )
 from .._core import Worksheet as NativeWorksheet
-from .._models import CellMetadata, coordinate_parts, range_bounds
+from .._models import CellMetadata, column_letter, coordinate_parts, range_bounds
 from ..cell import Cell, MergedCell
+
+_LETTERS = tuple([""] + [chr(64 + i) for i in range(1, 27)])
 
 
 class Worksheet:
@@ -31,11 +33,18 @@ class Worksheet:
         return getattr(self._native, name)
 
     def _check_writable(self):
-        self.parent._check_writable()
+        if self._read_only:
+            raise TypeError("Cannot modify a read-only workbook")
+        if self.parent._closed:
+            raise ValueError("Workbook is closed")
 
     @property
     def _metadata(self):
         return self.parent._sheet_metadata(self.title)
+
+    @property
+    def _cells(self):
+        return self._metadata.cells
 
     @property
     def title(self):
@@ -110,12 +119,14 @@ class Worksheet:
         if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
             return True
         book = self.parent._book
-        metadata = book.sheets.get(self.title) if book is not None else None
+        if book is None:
+            return False
+        metadata = book.sheets.get(self.title)
         return bool(metadata is not None and metadata.merged_cells.ranges)
 
-    def _wrap_cell(self, native, row=None, column=None):
+    def _wrap_cell(self, native, row=None, column=None, coordinate=None):
         if not self._may_have_merges:
-            return Cell(self, native)
+            return Cell(self, native, row=row, column=column, coordinate=coordinate)
         if self.parent._native_style_reader is not None and not self.parent._full_metadata_loaded:
             r = row if row is not None else native.row
             c = column if column is not None else native.column
@@ -125,14 +136,24 @@ class Worksheet:
             c = column if column is not None else native.column
             is_merged = self._is_merged(c, r)
         cls = MergedCell if is_merged else Cell
-        return cls(self, native)
+        return cls(self, native, row=r, column=c, coordinate=coordinate)
 
     def _wrap_result(self, result):
         if isinstance(result, (tuple, list)):
             return tuple(self._wrap_result(item) for item in result)
         return self._wrap_cell(result)
 
-    def cell(self, row, column, value=None):
+    def cell(
+        self,
+        row,
+        column,
+        value=None,
+        font=None,
+        fill=None,
+        border=None,
+        alignment=None,
+        protection=None,
+    ):
         if not (1 <= row <= 1048576 and 1 <= column <= 16384):
             if not 1 <= row <= 1048576:
                 raise ValueError("Row outside Excel limits")
@@ -151,14 +172,82 @@ class Worksheet:
                     self._native.cell(row=row, column=column), row=row, column=column
                 )
                 cell.value = value
-                return cell
-            native = self._native.cell(row=row, column=column, value=value)
-            return Cell(self, native)
+            else:
+                native = self._native.cell(row=row, column=column, value=value)
+                cell = Cell(self, native, row=row, column=column)
+        else:
+            native = self._native.cell(row=row, column=column)
+            if not self._may_have_merges:
+                cell = Cell(self, native, row=row, column=column)
+            else:
+                cell = self._wrap_cell(native, row=row, column=column)
 
-        native = self._native.cell(row=row, column=column)
-        if not self._may_have_merges:
-            return Cell(self, native)
-        return self._wrap_cell(native, row=row, column=column)
+        if (
+            font is not None
+            or fill is not None
+            or border is not None
+            or alignment is not None
+            or protection is not None
+        ):
+            cells = self._cells
+            coord = cell.coordinate
+            meta = cells.get(coord)
+            if meta is None:
+                meta = cells[coord] = CellMetadata(row=row, column=column)
+            pool = self.parent._style_pool
+            if font is not None:
+                meta.font = pool.assign(font)
+            if fill is not None:
+                meta.fill = pool.assign(fill)
+            if border is not None:
+                meta.border = pool.assign(border)
+            if alignment is not None:
+                meta.alignment = pool.assign(alignment)
+            if protection is not None:
+                meta.protection = pool.assign(protection)
+            meta.style_dirty = True
+            cell._metadata = meta
+        return cell
+
+    def apply_style(
+        self,
+        range_string,
+        font=None,
+        fill=None,
+        border=None,
+        alignment=None,
+        protection=None,
+    ):
+        """Apply styles across a cell range in a fast bulk operation."""
+        self._check_writable()
+        c1, r1, c2, r2 = range_bounds(range_string)
+        pool = self.parent._style_pool
+        f = pool.assign(font) if font is not None else None
+        fi = pool.assign(fill) if fill is not None else None
+        b = pool.assign(border) if border is not None else None
+        a = pool.assign(alignment) if alignment is not None else None
+        p = pool.assign(protection) if protection is not None else None
+        cells = self._cells
+        for r in range(r1, r2 + 1):
+            for col in range(c1, c2 + 1):
+                if 1 <= col <= 26:
+                    coord = f"{_LETTERS[col]}{r}"
+                else:
+                    coord = f"{column_letter(col)}{r}"
+                meta = cells.get(coord)
+                if meta is None:
+                    meta = cells[coord] = CellMetadata(row=r, column=col)
+                if f is not None:
+                    meta.font = f
+                if fi is not None:
+                    meta.fill = fi
+                if b is not None:
+                    meta.border = b
+                if a is not None:
+                    meta.alignment = a
+                if p is not None:
+                    meta.protection = p
+                meta.style_dirty = True
 
     def __getitem__(self, key):
         return self._wrap_result(self._native[key])

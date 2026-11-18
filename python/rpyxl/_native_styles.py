@@ -146,7 +146,10 @@ def compile_style_records(metadata_book):
                     records.append(tuple(record))
                 rec_idx = indices[key]
                 identity_cache[id_key] = rec_idx
-            col, row = coordinate_parts(coordinate)
+            if cell.row and cell.column:
+                row, col = cell.row, cell.column
+            else:
+                col, row = coordinate_parts(coordinate)
             assignments.append((title, row, col, rec_idx))
     return records, assignments
 

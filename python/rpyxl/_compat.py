@@ -52,7 +52,7 @@ def cell_metadata_property(name):
             )
         metadata = getattr(self, "_metadata", None)
         if metadata is None:
-            cells = workbook._sheet_metadata(self.parent.title, full=False).cells
+            cells = self.parent._cells
             coordinate = self.coordinate
             metadata = cells.get(coordinate)
             if metadata is None:
@@ -88,7 +88,7 @@ def cell_metadata_property(name):
             return
         metadata = getattr(self, "_metadata", None)
         if metadata is None:
-            cells = workbook._sheet_metadata(self.parent.title, full=False).cells
+            cells = self.parent._cells
             coordinate = self.coordinate
             metadata = cells.get(coordinate)
             if metadata is None:
@@ -127,11 +127,17 @@ def structural_metadata(sheet, axis, idx, amount, delete=False):
 
     result.cells = {}
     for ref, metadata in sheet.cells.items():
-        new_ref = point(*coordinate_parts(ref))
-        if new_ref:
+        c_orig, r_orig = coordinate_parts(ref)
+        val = shift(r_orig if axis == "row" else c_orig)
+        if val is not None:
+            new_c = c_orig if axis == "row" else val
+            new_r = val if axis == "row" else r_orig
+            new_ref = coordinate(new_c, new_r)
             if metadata.hyperlink is not None and not isinstance(metadata.hyperlink, str):
                 metadata = deepcopy(metadata)
                 metadata.hyperlink.ref = new_ref
+            metadata.row = new_r
+            metadata.column = new_c
             result.cells[new_ref] = metadata
 
     dimensions = result.row_dimensions if axis == "row" else result.column_dimensions
@@ -162,8 +168,12 @@ def move_metadata(sheet, cell_range, rows, cols):
     for ref, metadata in sheet.cells.items():
         col, row = coordinate_parts(ref)
         if c1 <= col <= c2 and r1 <= row <= r2:
-            new_ref = coordinate(col + cols, row + rows)
+            new_c = col + cols
+            new_row = row + rows
+            new_ref = coordinate(new_c, new_row)
             metadata = deepcopy(metadata)
+            metadata.row = new_row
+            metadata.column = new_c
             if metadata.hyperlink is not None and not isinstance(metadata.hyperlink, str):
                 metadata.hyperlink.ref = new_ref
             moving[new_ref] = metadata

@@ -5,34 +5,61 @@ from datetime import date, datetime, time
 
 from ._compat import cell_metadata_property
 from ._core import Cell as NativeCell
-from ._models import CellMetadata, Hyperlink
+from ._models import CellMetadata, Hyperlink, column_letter
+
+_LETTERS = tuple([""] + [chr(64 + i) for i in range(1, 27)])
 
 
 class Cell:
-    __slots__ = ("_native", "parent", "_metadata")
+    __slots__ = ("_native", "parent", "_metadata", "_row", "_column", "_coordinate")
 
-    def __init__(self, parent, native):
+    def __init__(self, parent, native, row=None, column=None, coordinate=None):
         self.parent = parent
         self._native = native
         self._metadata = None
+        self._row = row
+        self._column = column
+        self._coordinate = coordinate
 
     def __getattr__(self, name):
         return getattr(self._native, name)
 
     @property
     def row(self):
+        if self._row is not None:
+            return self._row
         return self._native.row
 
     @property
     def column(self):
+        if self._column is not None:
+            return self._column
         return self._native.column
 
     @property
     def coordinate(self):
-        return self._native.coordinate
+        if self._coordinate is not None:
+            return self._coordinate
+        col = self._column
+        row = self._row
+        if col is not None and row is not None:
+            if 1 <= col <= 26:
+                coord = f"{_LETTERS[col]}{row}"
+            else:
+                coord = f"{column_letter(col)}{row}"
+            self._coordinate = coord
+            return coord
+        coord = self._native.coordinate
+        self._coordinate = coord
+        return coord
 
     @property
     def column_letter(self):
+        col = self._column
+        if col is not None:
+            if 1 <= col <= 26:
+                return _LETTERS[col]
+            return column_letter(col)
         return self._native.column_letter
 
     @property
