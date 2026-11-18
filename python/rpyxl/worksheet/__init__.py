@@ -59,7 +59,10 @@ class Worksheet:
 
     @property
     def freeze_panes(self):
-        return self._metadata.freeze_panes
+        val = self._metadata.freeze_panes
+        if val is None and hasattr(self._native, "freeze_panes"):
+            return self._native.freeze_panes
+        return val
 
     @freeze_panes.setter
     def freeze_panes(self, value):
@@ -68,7 +71,12 @@ class Worksheet:
         if value is not None:
             col, row = coordinate_parts(value)
             value = coordinate(col, row)
-        self._metadata.freeze_panes = None if value == "A1" else value
+        coord = None if value == "A1" else value
+        self._metadata.freeze_panes = coord
+        try:
+            self._native.freeze_panes = coord
+        except (AttributeError, TypeError):
+            pass
 
     @property
     def sheet_state(self):

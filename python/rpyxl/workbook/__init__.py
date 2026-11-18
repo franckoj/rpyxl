@@ -353,6 +353,13 @@ class Workbook(metaclass=_WorkbookMeta):
         self._check_writable()
         if compression_level is not None:
             self.compression_level = compression_level
+        if self._book is not None and not self.write_only:
+            for title, sheet in self._book.sheets.items():
+                if sheet.freeze_panes:
+                    try:
+                        self._native[title].freeze_panes = sheet.freeze_panes
+                    except Exception:
+                        pass
         if self._native_style_reader is not None:
             self._native_style_reader.flush()
         needs_overlay = None

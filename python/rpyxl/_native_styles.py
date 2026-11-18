@@ -199,6 +199,8 @@ def requires_metadata_overlay(metadata_book):
                     return True
                 if vars(value) != vars(getattr(default_sheet, name)):
                     return True
+            elif name == "freeze_panes":
+                continue
             elif _snapshot(value) != _snapshot(getattr(default_sheet, name)):
                 return True
     return False

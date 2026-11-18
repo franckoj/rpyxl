@@ -2997,6 +2997,53 @@ fn generate_workbook_xml(wb: &Workbook) -> String {
     s
 }
 
+fn write_sheet_views(ws: &Worksheet, s: &mut String) -> RpyxlResult<()> {
+    if let Some(freeze) = ws.freeze_panes() {
+        let (row, col) = rpyxl_core::coordinate::coordinate_to_tuple(freeze)?;
+        if row <= 1 && col <= 1 {
+            s.push_str("  <sheetViews>\n    <sheetView workbookViewId=\"0\">\n      <selection activeCell=\"A1\" sqref=\"A1\"/>\n    </sheetView>\n  </sheetViews>\n");
+        } else {
+            let x_split = col.saturating_sub(1);
+            let y_split = row.saturating_sub(1);
+            s.push_str("  <sheetViews>\n    <sheetView workbookViewId=\"0\">\n      <pane");
+            if x_split > 0 {
+                s.push_str(" xSplit=\"");
+                s.push_str(itoa::Buffer::new().format(x_split));
+                s.push('\"');
+            }
+            if y_split > 0 {
+                s.push_str(" ySplit=\"");
+                s.push_str(itoa::Buffer::new().format(y_split));
+                s.push('\"');
+            }
+            s.push_str(" topLeftCell=\"");
+            s.push_str(freeze);
+            s.push('\"');
+            let active_pane = if x_split > 0 && y_split > 0 {
+                "bottomRight"
+            } else if x_split > 0 {
+                "topRight"
+            } else {
+                "bottomLeft"
+            };
+            s.push_str(" activePane=\"");
+            s.push_str(active_pane);
+            s.push_str("\" state=\"frozen\"/>\n");
+            if x_split > 0 && y_split > 0 {
+                s.push_str("      <selection pane=\"topRight\"/>\n      <selection pane=\"bottomLeft\"/>\n      <selection pane=\"bottomRight\" activeCell=\"A1\" sqref=\"A1\"/>\n");
+            } else {
+                s.push_str("      <selection pane=\"");
+                s.push_str(active_pane);
+                s.push_str("\" activeCell=\"A1\" sqref=\"A1\"/>\n");
+            }
+            s.push_str("    </sheetView>\n  </sheetViews>\n");
+        }
+    } else {
+        s.push_str("  <sheetViews>\n    <sheetView workbookViewId=\"0\">\n      <selection activeCell=\"A1\" sqref=\"A1\"/>\n    </sheetView>\n  </sheetViews>\n");
+    }
+    Ok(())
+}
+
 fn generate_worksheet_xml(
     ws: &Worksheet,
     styles: &StyleTables,
@@ -3015,7 +3062,9 @@ fn generate_worksheet_xml(
     write_coordinate(min_r, min_c, &mut s)?;
     s.push(':');
     write_coordinate(max_r, max_c, &mut s)?;
-    s.push_str("\"/>\n  <sheetData>\n");
+    s.push_str("\"/>\n");
+    write_sheet_views(ws, &mut s)?;
+    s.push_str("  <sheetData>\n");
 
     let num_threads = rayon::current_num_threads();
     let total_rows = if max_r >= min_r { max_r - min_r + 1 } else { 0 };
@@ -3192,6 +3241,11 @@ fn write_cell_styled(
     write_cell_styled_explicit(row, col, val, out, style, date_1904, false);
 }
 
+#[inline]
+fn needs_space_preserve(s: &str) -> bool {
+    s.starts_with(char::is_whitespace) || s.ends_with(char::is_whitespace)
+}
+
 fn write_cell_styled_explicit(
     row: u32,
     col: u32,
@@ -3210,7 +3264,11 @@ fn write_cell_styled_explicit(
         }
         CellValue::String(s) => {
             write_cell_open(row, col, style, explicit, out);
-            out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+            if needs_space_preserve(s) {
+                out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+            } else {
+                out.push_str("\" t=\"inlineStr\"><is><t>");
+            }
             write_xml_escaped(s, out);
             out.push_str("</t></is></c>");
         }
@@ -3243,7 +3301,11 @@ fn write_cell_styled_explicit(
                 out.push_str("</v></c>");
             } else {
                 write_cell_open(row, col, style, explicit, out);
-                out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+                if needs_space_preserve(s) {
+                    out.push_str("\" t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+                } else {
+                    out.push_str("\" t=\"inlineStr\"><is><t>");
+                }
                 write_xml_escaped(s, out);
                 out.push_str("</t></is></c>");
             }

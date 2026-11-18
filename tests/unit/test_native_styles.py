@@ -174,6 +174,7 @@ def test_overlay_style_only_and_default_getters(metadata_book):
         protection=Protection(),
     )
     _ = sheet.column_dimensions["B"], sheet.row_dimensions[2]
+    sheet.freeze_panes = "B2"
     assert not requires_metadata_overlay(metadata_book)
     book = Workbook()
     book.active["B2"].number_format = '0.0000 "units"'
@@ -193,7 +194,6 @@ def test_overlay_style_only_and_default_getters(metadata_book):
         "hyperlink",
         "width",
         "height",
-        "freeze",
         "filter",
         "tab_color",
         "hidden",
@@ -221,8 +221,6 @@ def test_overlay_non_style_features(metadata_book, feature):
         sheet.column_dimensions["B"].width = 20
     elif feature == "height":
         sheet.row_dimensions[2].height = 30
-    elif feature == "freeze":
-        sheet.freeze_panes = "B2"
     elif feature == "filter":
         sheet.auto_filter.ref = "A1:B2"
     elif feature == "tab_color":

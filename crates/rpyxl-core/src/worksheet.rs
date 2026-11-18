@@ -17,6 +17,7 @@ pub struct Worksheet {
     pub unsupported_cell_content: bool,
     /// Original merged ranges, in (min_row, min_col, max_row, max_col) order.
     pub merged_ranges: Vec<(u32, u32, u32, u32)>,
+    pub freeze_panes: Option<String>,
     // Only the OOXML proof entry point should install this snapshot. Keeping it
     // private prevents edits to public templates from silently reusing a proof.
     structural_source: Option<Arc<PackageTemplate>>,
@@ -38,6 +39,7 @@ impl Worksheet {
             xml_template: None,
             unsupported_cell_content: false,
             merged_ranges: Vec::new(),
+            freeze_panes: None,
             structural_source: None,
             structural_template: None,
             source_rows_changed: false,
@@ -248,6 +250,14 @@ impl Worksheet {
         for cell in self.cells.values_mut() {
             cell.rich_style = None;
         }
+    }
+
+    pub fn freeze_panes(&self) -> Option<&str> {
+        self.freeze_panes.as_deref()
+    }
+
+    pub fn set_freeze_panes(&mut self, freeze_panes: Option<String>) {
+        self.freeze_panes = freeze_panes;
     }
 
     pub fn set_cell_number_format(

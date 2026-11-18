@@ -761,6 +761,29 @@ impl PyWorksheet {
     }
 
     #[getter]
+    pub fn freeze_panes(&self) -> PyResult<Option<String>> {
+        let wb = self.wb.read();
+        let title_guard = self.sheet_title.read();
+        let ws = wb
+            .get_sheet(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+            .map_err(map_rpyxl_err)?;
+        Ok(ws.freeze_panes().map(String::from))
+    }
+
+    #[setter]
+    pub fn set_freeze_panes(&self, coord: Option<&str>) -> PyResult<()> {
+        let mut wb = self.wb.write();
+        let title_guard = self.sheet_title.read();
+        let ws = wb
+            .get_sheet_mut(&title_guard)
+            .ok_or_else(|| RpyxlError::SheetNotFound((*title_guard).clone()))
+            .map_err(map_rpyxl_err)?;
+        ws.set_freeze_panes(coord.map(String::from));
+        Ok(())
+    }
+
+    #[getter]
     pub fn min_row(&self) -> PyResult<u32> {
         let wb = self.wb.read();
         let title_guard = self.sheet_title.read();
