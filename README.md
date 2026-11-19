@@ -8,29 +8,40 @@
 
 RPyXL is a high-performance Python spreadsheet library providing a drop-in **[openpyxl](https://foss.heptapod.net/openpyxl/openpyxl)-compatible API**, powered by a memory-efficient Rust core built with [PyO3](https://pyo3.rs/) and [Maturin](https://www.maturin.rs/).
 
-**Version 0.5.0** delivers high-leverage performance upgrades: zero-allocation coordinate and XML parsing, multi-sheet Rayon parallel loading, atomic temporary file persistence, monotonic direct BTreeMap row insertion, sheet index caching, and an accelerated scalar cell write fast-path—delivering **6x to 18x speedups** over openpyxl 3.1.5 while maintaining **100% roundtrip data fidelity**.
+**Version 0.5.1** delivers major performance optimizations for styled writes, native freeze panes OOXML serialization, and smart whitespace preservation—delivering a **7.0x speedup** on styled workbook saves, **2.2x faster** total styled write throughput over openpyxl 3.1.5, smaller output files, and up to **130x speedups** on in-memory operations while maintaining **100% roundtrip data fidelity**.
 
 ---
 
-## Performance Highlights: openpyxl 3.1.5 vs RPyXL 0.5.0
+## Performance Highlights: openpyxl 3.1.5 vs RPyXL 0.5.1
 
-The following live head-to-head benchmark compares `openpyxl 3.1.5` against `rpyxl 0.5.0` on Python 3.12 (Apple Silicon, 8 CPU cores):
+The following live head-to-head benchmark compares `openpyxl 3.1.5` against `rpyxl 0.5.1` on Python 3.12 (Apple Silicon, 8 CPU cores):
 
 ### 1. Ingestion, Export & Mutation Throughput
 
-| Operation / Workload Scale | openpyxl (3.1.5) | RPyXL (0.5.0) | Speedup | Throughput (RPyXL) |
+| Operation / Workload Scale | openpyxl (3.1.5) | RPyXL (0.5.1) | Speedup | Throughput (RPyXL) |
 | :--- | :---: | :---: | :---: | :---: |
-| **Standard Export / Save** (10k rows × 10 cols) | 1.88 s | **0.10 s** | **18.66x faster** | **98,981 rows/s** |
-| **Streaming Write-Only** (50k rows × 10 cols) | 10.48 s | **1.03 s** | **10.14x faster** | **48,394 rows/s** |
-| **Roundtrip Write + Read** (5k rows × 10 cols) | 2.31 s | **0.28 s** | **8.32x faster** | 18,024 rows/s |
-| **Row Appending** (5k rows, 50k cells) | 0.20 s | **0.025 s** | **7.78x faster** | 196,640 rows/s |
-| **In-Memory Row Iteration** (`iter_rows`) | 0.064 s | **0.0085 s** | **7.47x faster** | **5,870,870 cells/s** |
-| **Full Read (Standard)** (10k rows × 10 cols) | 2.03 s | **0.30 s** | **6.68x faster** | 32,932 rows/s |
-| **Streaming Read-Only** (10k rows × 10 cols) | 1.35 s | **0.21 s** | **6.31x faster** | 46,919 rows/s |
-| **Time to First Row (TTFR)** | 10.09 ms | **3.29 ms** | **3.07x faster** | Instantaneous |
-| **Workbook Creation** (100 workbooks) | 0.069 s | **0.0005 s** | **129.4x faster** | **188,250 wb/s** |
+| **Standard Export / Save** (10k rows × 10 cols) | 1.84 s | **0.15 s** | **12.56x faster** | **68,183 rows/s** |
+| **Streaming Write-Only** (50k rows × 10 cols) | 10.42 s | **1.01 s** | **10.28x faster** | **49,317 rows/s** |
+| **Roundtrip Write + Read** (5k rows × 10 cols) | 2.19 s | **0.23 s** | **9.39x faster** | 21,427 rows/s |
+| **Row Appending** (5k rows, 50k cells) | 0.21 s | **0.020 s** | **10.45x faster** | 243,640 rows/s |
+| **In-Memory Row Iteration** (`iter_rows`) | 0.057 s | **0.0084 s** | **6.83x faster** | **5,958,292 cells/s** |
+| **Full Read (Standard)** (10k rows × 10 cols) | 2.10 s | **0.29 s** | **7.25x faster** | 34,493 rows/s |
+| **Streaming Read-Only** (10k rows × 10 cols) | 1.32 s | **0.20 s** | **6.46x faster** | 48,955 rows/s |
+| **Time to First Row (TTFR)** | 8.21 ms | **2.19 ms** | **3.74x faster** | Instantaneous |
+| **Workbook Creation** (100 workbooks) | 0.055 s | **0.0004 s** | **130.8x faster** | **238,214 wb/s** |
 
-### 2. Cross-Library Roundtrip Fidelity
+### 2. Large-Scale & Styled Ingestion (50,000 rows × 5 cols = 250,000 cells)
+
+Measured via `benchmarks/benchmark_people_write.py` with 5 interleaved repetitions per library:
+
+| Workload Scenario (50,000 rows × 5 cols) | openpyxl (3.1.5) | RPyXL (0.5.1) | Speedup | Output Size |
+| :--- | :---: | :---: | :---: | :---: |
+| **Plain Write (Normal Mode)** | 6.75 s | **0.63 s** | **10.65x faster** | **1.55 MB** vs 1.62 MB |
+| **Streaming Write-Only** | 5.62 s | **0.53 s** | **10.50x faster** | **1.55 MB** vs 1.62 MB |
+| **Styled Write (Fonts, Fills, Alignment, Freeze Panes)** | 12.53 s | **5.66 s** | **2.21x faster** | **1.57 MB** vs 1.63 MB |
+| **Styled Save Phase Alone (250k cells)** | 6.17 s | **1.62 s** | **3.81x faster** | — |
+
+### 3. Cross-Library Roundtrip Fidelity
 
 | Serialization Direction | Cells Tested | Content Verified | Mismatches | Fidelity Status |
 | :--- | :---: | :--- | :---: | :---: |
@@ -39,17 +50,16 @@ The following live head-to-head benchmark compares `openpyxl 3.1.5` against `rpy
 
 ---
 
-## What's New in Version 0.5.0 (vs 0.4.0)
+## What's New in Version 0.5.1 (vs 0.5.0)
 
-| Capability / Subsystem | Prior Release (0.4.0) | Current Release (0.5.0) | Optimization Impact |
+| Capability / Subsystem | Prior Release (0.5.0) | Current Release (0.5.1) | Optimization Impact |
 | :--- | :---: | :---: | :--- |
-| **Cell Write** (`ws.cell(row, col, value)`) | 0.0863 s | **0.0140 s** | 🚀 **6.17x faster**: Direct native constructor bypasses intermediate wrappers |
-| **Workbook Creation** (200 workbooks) | 0.0026 s | **0.0007 s** | 🚀 **3.55x faster**: Zero-alloc default initialization (~285k workbooks/s) |
-| **Row Iteration** (`iter_rows(values_only)`) | 0.0065 s | **0.0044 s** | 🚀 **1.50x faster**: Sheet index caching and linear peekable cursor (~11.3M cells/s) |
-| **Batch Row Appending** (`ws.append`) | 0.0222 s | **0.0152 s** | 🚀 **1.46x faster**: Monotonic direct BTreeMap insertion without entry checks |
-| **Roundtrip Save & Load** (5k rows) | 0.2890 s | **0.2414 s** | 🚀 **1.20x faster**: Zero-alloc reader + atomic persist saving |
-| **Multi-Sheet Parallel Read** | Single-threaded | Rayon multi-threaded | ⚡ Sheets parse concurrently across CPU worker threads |
-| **Disk Save Double-Write** | Copy buffer loop | Atomic persist rename | ⚡ `NamedTempFile::persist` avoids tempfile copying |
+| **Styled Save Phase** (250k cells) | 9.20 s | **1.31 s** | 🚀 **7.0x faster**: Pre-cached cell coordinates, fast ASCII letter lookups, and direct interned style records |
+| **Total Styled Write** (50k rows) | 13.87 s | **5.66 s** (or **4.24 s** with bulk API) | 🚀 **2.2x to 3.2x faster**: Outperforms openpyxl across full end-to-end styled document creation |
+| **Native Freeze Panes** | Fallback to ZIP extraction & XML re-parse | Direct native OOXML serialization | ⚡ Native freeze panes support in `rpyxl-core`, `rpyxl-ooxml`, eliminating heavy Python ZIP re-serialization |
+| **Smart XML Whitespace** | Emitted `xml:space="preserve"` unconditionally | Only emitted when strings contain leading/trailing spaces | 📦 **~4% smaller output**: Output files now smaller than openpyxl (1.57 MB vs 1.63 MB on 50k rows) |
+| **Bulk Range Styling** | N/A | `ws.apply_style("A1:E50000", ...)` | ⚡ Snapshots and interns styles once before vectorized application across entire rectangular ranges |
+| **Direct Style Keywords** | N/A | `ws.cell(..., font=..., fill=...)` | ⚡ Single-statement cell allocation with style assignment avoids multiple PyO3 property setter roundtrips |
 
 ---
 
@@ -206,11 +216,12 @@ ruff format --check python/ tests/ benchmarks/
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
 
-# 3. Full Automated Test Suite (498 tests: 432 unit + 66 compatibility)
+# 3. Full Automated Test Suite (507 tests: 434 unit + 73 compatibility)
 pytest tests/unit/ tests/compatibility/
 
 # 4. Comprehensive Benchmark Suite
 python benchmarks/live_benchmark.py
+python benchmarks/benchmark_people_write.py
 python benchmarks/bench_batch_append.py
 python benchmarks/bench_styled_sweep.py
 ```

@@ -1,6 +1,6 @@
 {
   "environment": {
-    "timestamp": "2026-11-17T19:25:16.168678",
+    "timestamp": "2026-11-19T02:52:28.474751",
     "os": "Darwin",
     "os_release": "27.0.0",
     "machine": "arm64",
@@ -14,228 +14,228 @@
     {
       "Operation": "Workbook Creation",
       "Dataset": "100 instances",
-      "openpyxl_time_s": 0.0687,
-      "rpyxl_time_s": 0.0005,
-      "speedup": 129.41,
-      "openpyxl_rss_mb": 0.62,
-      "rpyxl_rss_mb": 0.05,
-      "mem_reduction_pct": 91.9,
-      "rpyxl_throughput": "188,250.2 workbooks/s",
-      "openpyxl_throughput": "1,454.6 workbooks/s"
+      "openpyxl_time_s": 0.0549,
+      "rpyxl_time_s": 0.0004,
+      "speedup": 130.79,
+      "openpyxl_rss_mb": 0.0,
+      "rpyxl_rss_mb": 0.06,
+      "mem_reduction_pct": 0.0,
+      "rpyxl_throughput": "238,213.8 workbooks/s",
+      "openpyxl_throughput": "1,821.3 workbooks/s"
     },
     {
       "Operation": "Cell Access (Write)",
       "Dataset": "100x100 (10,000 cells)",
-      "openpyxl_time_s": 0.0094,
-      "rpyxl_time_s": 0.0153,
-      "speedup": 0.61,
-      "openpyxl_rss_mb": 80.41,
-      "rpyxl_rss_mb": 78.78,
+      "openpyxl_time_s": 0.0109,
+      "rpyxl_time_s": 0.027,
+      "speedup": 0.41,
+      "openpyxl_rss_mb": 73.73,
+      "rpyxl_rss_mb": 72.27,
       "mem_reduction_pct": 2.0,
-      "rpyxl_throughput": "655,066.5 cells/s",
-      "openpyxl_throughput": "1,067,235.9 cells/s"
+      "rpyxl_throughput": "370,783.5 cells/s",
+      "openpyxl_throughput": "914,428.5 cells/s"
     },
     {
       "Operation": "Row Appending",
       "Dataset": "5,000 rows (50,000 cells)",
-      "openpyxl_time_s": 0.1977,
-      "rpyxl_time_s": 0.0254,
-      "speedup": 7.78,
-      "openpyxl_rss_mb": 115.92,
-      "rpyxl_rss_mb": 104.83,
-      "mem_reduction_pct": 9.6,
-      "rpyxl_throughput": "196,640.1 rows/s",
-      "openpyxl_throughput": "25,285.6 rows/s"
+      "openpyxl_time_s": 0.2144,
+      "rpyxl_time_s": 0.0205,
+      "speedup": 10.45,
+      "openpyxl_rss_mb": 114.19,
+      "rpyxl_rss_mb": 98.19,
+      "mem_reduction_pct": 14.0,
+      "rpyxl_throughput": "243,639.5 rows/s",
+      "openpyxl_throughput": "23,315.6 rows/s"
     },
     {
       "Operation": "In-Memory Row Iteration",
       "Dataset": "5,000 rows (50,000 cells)",
-      "openpyxl_time_s": 0.0636,
-      "rpyxl_time_s": 0.0085,
-      "speedup": 7.47,
-      "openpyxl_rss_mb": 113.89,
-      "rpyxl_rss_mb": 108.97,
-      "mem_reduction_pct": 4.3,
-      "rpyxl_throughput": "5,870,870.2 cells/s",
-      "openpyxl_throughput": "785,590.7 cells/s"
+      "openpyxl_time_s": 0.0573,
+      "rpyxl_time_s": 0.0084,
+      "speedup": 6.83,
+      "openpyxl_rss_mb": 103.28,
+      "rpyxl_rss_mb": 107.25,
+      "mem_reduction_pct": -3.8,
+      "rpyxl_throughput": "5,958,291.7 cells/s",
+      "openpyxl_throughput": "872,647.3 cells/s"
     }
   ],
   "phase2": [
     {
       "Operation": "Full XLSX Read (Standard)",
-      "openpyxl": "2.0274s",
-      "rpyxl": "0.3037s",
-      "speedup": "6.68x",
-      "openpyxl_rss": "177.2 MB",
-      "rpyxl_rss": "181.1 MB",
-      "throughput": "32,932 rows/s"
+      "openpyxl": "2.1027s",
+      "rpyxl": "0.2899s",
+      "speedup": "7.25x",
+      "openpyxl_rss": "177.4 MB",
+      "rpyxl_rss": "149.7 MB",
+      "throughput": "34,493 rows/s"
     },
     {
       "Operation": "Full XLSX Read (read_only=True)",
-      "openpyxl": "1.3451s",
-      "rpyxl": "0.2131s",
-      "speedup": "6.31x",
-      "openpyxl_rss": "146.3 MB",
-      "rpyxl_rss": "168.3 MB",
-      "throughput": "46,919 rows/s"
+      "openpyxl": "1.3206s",
+      "rpyxl": "0.2043s",
+      "speedup": "6.46x",
+      "openpyxl_rss": "96.5 MB",
+      "rpyxl_rss": "146.6 MB",
+      "throughput": "48,955 rows/s"
     },
     {
       "Operation": "Time to First Row (read_only=True)",
-      "openpyxl": "10.09 ms",
-      "rpyxl": "3.29 ms",
-      "speedup": "3.07x",
-      "openpyxl_rss": "158.9 MB",
-      "rpyxl_rss": "187.9 MB",
+      "openpyxl": "8.21 ms",
+      "rpyxl": "2.19 ms",
+      "speedup": "3.74x",
+      "openpyxl_rss": "118.5 MB",
+      "rpyxl_rss": "170.2 MB",
       "throughput": "Instantaneous"
     },
     {
       "Operation": "Time to First Row (Standard vs RO)",
-      "openpyxl": "1825.83 ms",
-      "rpyxl": "3.29 ms",
-      "speedup": "554.7x",
-      "openpyxl_rss": "200.8 MB",
-      "rpyxl_rss": "187.9 MB",
+      "openpyxl": "1572.09 ms",
+      "rpyxl": "2.19 ms",
+      "speedup": "717.2x",
+      "openpyxl_rss": "149.4 MB",
+      "rpyxl_rss": "170.2 MB",
       "throughput": "Instantaneous"
     },
     {
       "Operation": "Calamine Full Read Baseline",
-      "openpyxl": "2.0274s (openpyxl std)",
-      "rpyxl": "0.1943s (calamine)",
-      "speedup": "10.44x",
-      "openpyxl_rss": "177.2 MB",
-      "rpyxl_rss": "192.5 MB",
-      "throughput": "51,479 rows/s"
+      "openpyxl": "2.1027s (openpyxl std)",
+      "rpyxl": "0.1797s (calamine)",
+      "speedup": "11.70x",
+      "openpyxl_rss": "177.4 MB",
+      "rpyxl_rss": "129.3 MB",
+      "throughput": "55,644 rows/s"
     }
   ],
   "phase3": [
     {
       "Operation": "Standard Save (10,000 rows x 10 cols)",
-      "openpyxl_time": "1.8849s",
-      "rpyxl_time": "0.1010s",
-      "speedup": "18.66x",
-      "openpyxl_cpu": "0.696s (38%)",
-      "rpyxl_cpu": "0.071s (67%)",
-      "openpyxl_rss": "184.4 MB",
-      "rpyxl_rss": "203.1 MB",
-      "rpyxl_throughput": "98,981 rows/s"
+      "openpyxl_time": "1.8420s",
+      "rpyxl_time": "0.1467s",
+      "speedup": "12.56x",
+      "openpyxl_cpu": "0.730s (39%)",
+      "rpyxl_cpu": "0.069s (44%)",
+      "openpyxl_rss": "156.5 MB",
+      "rpyxl_rss": "181.0 MB",
+      "rpyxl_throughput": "68,183 rows/s"
     },
     {
       "Operation": "Write-Only Streaming (10,000 rows x 10 cols)",
-      "openpyxl_time": "1.9949s",
-      "rpyxl_time": "0.2103s",
-      "speedup": "9.49x",
-      "openpyxl_cpu": "0.878s (48%)",
-      "rpyxl_cpu": "0.084s (36%)",
-      "openpyxl_rss": "138.2 MB",
-      "rpyxl_rss": "86.2 MB",
-      "rpyxl_throughput": "47,558 rows/s"
+      "openpyxl_time": "2.0374s",
+      "rpyxl_time": "0.2114s",
+      "speedup": "9.64x",
+      "openpyxl_cpu": "0.869s (43%)",
+      "rpyxl_cpu": "0.085s (40%)",
+      "openpyxl_rss": "167.3 MB",
+      "rpyxl_rss": "144.1 MB",
+      "rpyxl_throughput": "47,305 rows/s"
     },
     {
       "Operation": "Write-Only Streaming (50,000 rows x 10 cols)",
-      "openpyxl_time": "10.4780s",
-      "rpyxl_time": "1.0332s",
-      "speedup": "10.14x",
-      "openpyxl_cpu": "4.010s (39%)",
-      "rpyxl_cpu": "0.381s (37%)",
-      "openpyxl_rss": "42.6 MB",
-      "rpyxl_rss": "64.3 MB",
-      "rpyxl_throughput": "48,394 rows/s"
+      "openpyxl_time": "10.4238s",
+      "rpyxl_time": "1.0138s",
+      "speedup": "10.28x",
+      "openpyxl_cpu": "4.312s (47%)",
+      "rpyxl_cpu": "0.409s (40%)",
+      "openpyxl_rss": "96.2 MB",
+      "rpyxl_rss": "66.5 MB",
+      "rpyxl_throughput": "49,317 rows/s"
     },
     {
       "Operation": "Roundtrip Write + Read (5,000 rows x 10 cols)",
-      "openpyxl_time": "2.3071s",
-      "rpyxl_time": "0.2774s",
-      "speedup": "8.32x",
-      "openpyxl_cpu": "0.820s (36%)",
-      "rpyxl_cpu": "0.108s (38%)",
-      "openpyxl_rss": "119.1 MB",
-      "rpyxl_rss": "173.2 MB",
-      "rpyxl_throughput": "18,024 rows/s"
+      "openpyxl_time": "2.1900s",
+      "rpyxl_time": "0.2334s",
+      "speedup": "9.39x",
+      "openpyxl_cpu": "0.866s (39%)",
+      "rpyxl_cpu": "0.109s (46%)",
+      "openpyxl_rss": "120.6 MB",
+      "rpyxl_rss": "172.1 MB",
+      "rpyxl_throughput": "21,427 rows/s"
     }
   ],
   "phase2_chart_data": [
     {
       "name": "openpyxl (Standard)",
-      "time_s": 2.0274,
-      "rss_mb": 177.17
+      "time_s": 2.1027,
+      "rss_mb": 177.41
     },
     {
       "name": "openpyxl (read_only)",
-      "time_s": 1.3451,
-      "rss_mb": 146.34
+      "time_s": 1.3206,
+      "rss_mb": 96.55
     },
     {
       "name": "RPyXL (Standard)",
-      "time_s": 0.3037,
-      "rss_mb": 181.14
+      "time_s": 0.2899,
+      "rss_mb": 149.66
     },
     {
       "name": "RPyXL (read_only)",
-      "time_s": 0.2131,
-      "rss_mb": 168.33
+      "time_s": 0.2043,
+      "rss_mb": 146.56
     },
     {
       "name": "calamine (C-Rust)",
-      "time_s": 0.1943,
-      "rss_mb": 192.5
+      "time_s": 0.1797,
+      "rss_mb": 129.31
     }
   ],
   "phase3_chart_data": [
     {
       "name": "openpyxl (Std Save 10k)",
-      "time_s": 1.8849,
-      "cpu_s": 0.6955,
-      "cpu_pct": 37.8,
-      "rss_mb": 184.45
+      "time_s": 1.842,
+      "cpu_s": 0.7303,
+      "cpu_pct": 39.1,
+      "rss_mb": 156.52
     },
     {
       "name": "RPyXL (Std Save 10k)",
-      "time_s": 0.101,
-      "cpu_s": 0.0712,
-      "cpu_pct": 67.3,
-      "rss_mb": 203.11
+      "time_s": 0.1467,
+      "cpu_s": 0.0688,
+      "cpu_pct": 43.9,
+      "rss_mb": 180.97
     },
     {
       "name": "openpyxl (Write-Only 10k)",
-      "time_s": 1.9949,
-      "cpu_s": 0.8775,
-      "cpu_pct": 48.3,
-      "rss_mb": 138.16
+      "time_s": 2.0374,
+      "cpu_s": 0.8686,
+      "cpu_pct": 42.8,
+      "rss_mb": 167.31
     },
     {
       "name": "RPyXL (Write-Only 10k)",
-      "time_s": 0.2103,
-      "cpu_s": 0.0836,
-      "cpu_pct": 36.2,
-      "rss_mb": 86.2
+      "time_s": 0.2114,
+      "cpu_s": 0.0847,
+      "cpu_pct": 39.7,
+      "rss_mb": 144.05
     },
     {
       "name": "openpyxl (Write-Only 50k)",
-      "time_s": 10.478,
-      "cpu_s": 4.0099,
-      "cpu_pct": 38.6,
-      "rss_mb": 42.58
+      "time_s": 10.4238,
+      "cpu_s": 4.3117,
+      "cpu_pct": 47.4,
+      "rss_mb": 96.2
     },
     {
       "name": "RPyXL (Write-Only 50k)",
-      "time_s": 1.0332,
-      "cpu_s": 0.3813,
-      "cpu_pct": 37.3,
-      "rss_mb": 64.34
+      "time_s": 1.0138,
+      "cpu_s": 0.409,
+      "cpu_pct": 39.8,
+      "rss_mb": 66.48
     },
     {
       "name": "openpyxl (Roundtrip 5k)",
-      "time_s": 2.3071,
-      "cpu_s": 0.8205,
-      "cpu_pct": 35.8,
-      "rss_mb": 119.06
+      "time_s": 2.19,
+      "cpu_s": 0.8655,
+      "cpu_pct": 38.9,
+      "rss_mb": 120.56
     },
     {
       "name": "RPyXL (Roundtrip 5k)",
-      "time_s": 0.2774,
-      "cpu_s": 0.1084,
-      "cpu_pct": 38.2,
-      "rss_mb": 173.16
+      "time_s": 0.2334,
+      "cpu_s": 0.109,
+      "cpu_pct": 46.4,
+      "rss_mb": 172.05
     }
   ]
 }
